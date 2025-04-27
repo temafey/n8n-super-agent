@@ -1,0 +1,10 @@
+FROM n8nio/n8n:latest
+
+WORKDIR /home/node
+
+# Копируем package.json и устанавливаем зависимости
+COPY package.json .
+RUN npm install
+
+# Возвращаемся в рабочую директорию n8n
+WORKDIR /home/node/.n8n

@@ -1,0 +1,288 @@
+{
+  "name": "Супер-агент: ReAct подход",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "react",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Извлекаем данные из запроса\nconst query = $input.body.query || '';\nconst userId = $input.body.userId || 'anonymous';\nconst sessionId = $input.body.sessionId || null;\nconst language = $input.body.language || 'русский';\n\n// Проверяем, передано ли состояние ReAct\nlet reactState = $input.body.reactState || null;\n\n// Если состояния нет, инициализируем новое\nif (!reactState) {\n  reactState = {\n    history: [\n      `Запрос: ${query}`,\n      'Thought: Давайте проанализируем задачу и разобьем её на подзадачи...'\n    ],\n    toolResults: {},\n    currentStep: null,\n    finished: false\n  };\n}\n\n// Вывод начального состояния\nreturn {\n  query,\n  userId,\n  sessionId,\n  language,\n  reactState,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "name": "Инициализация ReAct",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatPrompt": "# Промпт для ReAct подхода\n\nИспользуйте подход ReAct (Reasoning + Acting) для решения задачи. Следуйте этому процессу:\n\n1. **Рассуждение (Reasoning)**: Сначала проанализируйте проблему, разбейте её на подзадачи.\n2. **Действие (Acting)**: Определите, какие инструменты нужно вызвать для решения подзадачи.\n3. **Обработка (Processing)**: Обработайте результаты действия и переходите к следующему шагу.\n4. **Повторение**: Повторяйте цикл до решения задачи.\n\nФормат ответа:\n```\nThought: [рассуждение и анализ текущего состояния]\nAction: [инструмент, который нужно вызвать]\nAction Input: [входные данные для инструмента]\n```\n\nДоступные инструменты:\n- web_search: поиск информации в интернете\n- weather_search: информация о погоде\n- calculator: математические вычисления\n- database_query: запрос к базе данных\n\nПредыдущий ход выполнения:\n{% for item in $json.reactState.history %}\n{{ item }}\n{% endfor %}\n\nЗапрос: {{ $json.query }}\n\nПродолжите с вашего последнего шага в истории. Не повторяйте уже выполненные действия.\nОтвечайте на языке пользователя ({{ $json.language }}).",
+        "options": {
+          "temperature": 0.5
+        }
+      },
+      "name": "Получение следующего шага",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Парсим ответ от модели\nconst modelResponse = $input.openAiOutput || '';\n\n// Разбиваем ответ на строки\nconst lines = modelResponse.split('\\n').filter(line => line.trim());\n\n// Инициализируем переменные для хранения информации о шаге\nlet thoughtLine = '';\nlet actionLine = '';\nlet actionInputLine = '';\n\n// Проверяем каждую строку\nfor (const line of lines) {\n  if (line.startsWith('Thought:')) {\n    thoughtLine = line;\n  } else if (line.startsWith('Action:')) {\n    actionLine = line;\n  } else if (line.startsWith('Action Input:')) {\n    actionInputLine = line;\n  }\n}\n\n// Обновляем историю ReAct\nconst history = [...$input.reactState.history];\nif (thoughtLine) history.push(thoughtLine);\nif (actionLine) history.push(actionLine);\nif (actionInputLine) history.push(actionInputLine);\n\n// Анализируем, завершен ли процесс\nconst isAnswerProvided = modelResponse.includes('Answer:');\nlet answerText = '';\nif (isAnswerProvided) {\n  const answerMatch = modelResponse.match(/Answer:\\s*(.+)/s);\n  if (answerMatch && answerMatch[1]) {\n    answerText = answerMatch[1].trim();\n    history.push(`Answer: ${answerText}`);\n  }\n}\n\n// Определяем следующий шаг\nlet nextStep = null;\nlet tool = null;\nlet toolInput = null;\n\nif (actionLine && actionInputLine && !isAnswerProvided) {\n  // Извлекаем инструмент\n  const actionMatch = actionLine.match(/Action:\\s*(.+)/);\n  if (actionMatch && actionMatch[1]) {\n    tool = actionMatch[1].trim();\n  }\n  \n  // Извлекаем входные данные\n  const inputMatch = actionInputLine.match(/Action Input:\\s*(.+)/s);\n  if (inputMatch && inputMatch[1]) {\n    toolInput = inputMatch[1].trim();\n  }\n  \n  nextStep = { tool, input: toolInput };\n}\n\n// Обновляем состояние ReAct\nconst reactState = {\n  history,\n  toolResults: $input.reactState.toolResults,\n  currentStep: nextStep,\n  finished: isAnswerProvided\n};\n\n// Возвращаем обновленное состояние\nreturn {\n  ...$input,\n  reactState,\n  answer: answerText,\n  modelResponse\n};"
+      },
+      "name": "Парсинг ответа модели",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.reactState.finished }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Завершено?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.reactState.currentStep.tool }}",
+              "operation": "contains",
+              "value2": "web_search"
+            }
+          ]
+        }
+      },
+      "name": "Выбор инструмента",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "=http://localhost:5678/webhook/web-search",
+        "allowUnauthorizedCerts": true,
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={ \"query\": $json.reactState.currentStep.input, \"userId\": $json.userId, \"sessionId\": $json.sessionId, \"language\": $json.language, \"bypassCache\": false }"
+      },
+      "name": "Выполнение веб-поиска",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1450,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Получаем текущий инструмент и его результат\nconst tool = $input.reactState.currentStep.tool;\nlet toolResult = '';\n\n// В зависимости от предыдущего вызванного инструмента\nif (tool === 'web_search') {\n  // Форматируем результат веб-поиска\n  const searchResults = $input.body;\n  if (searchResults && searchResults.answer) {\n    toolResult = searchResults.answer;\n  } else if (searchResults && searchResults.results) {\n    toolResult = 'Результаты поиска:\\n';\n    for (let i = 0; i < Math.min(3, searchResults.results.length); i++) {\n      const result = searchResults.results[i];\n      toolResult += `${i+1}. ${result.title}\\n   ${result.description}\\n   ${result.url}\\n\\n`;\n    }\n  } else {\n    toolResult = 'Не найдено результатов по запросу.';\n  }\n} else if (tool === 'calculator') {\n  // Выполняем простые математические вычисления\n  try {\n    toolResult = eval($input.reactState.currentStep.input).toString();\n  } catch (error) {\n    toolResult = `Ошибка в математическом выражении: ${error.message}`;\n  }\n} else {\n  // Инструмент не реализован\n  toolResult = `Инструмент \"${tool}\" не реализован или недоступен.`;\n}\n\n// Обновляем историю ReAct\nconst history = [...$input.reactState.history];\nhistory.push(`Observation: ${toolResult}`);\n\n// Обновляем результаты инструментов\nconst toolResults = {\n  ...$input.reactState.toolResults,\n  [tool]: toolResult\n};\n\n// Обновляем состояние ReAct\nconst reactState = {\n  history,\n  toolResults,\n  currentStep: null,\n  finished: false\n};\n\n// Возвращаем обновленное состояние\nreturn {\n  ...$input,\n  reactState\n};"
+      },
+      "name": "Обработка результата",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1650,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "name": "Пауза",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1850,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "success",
+              "value": "true"
+            },
+            {
+              "name": "answer",
+              "value": "={{ $json.answer }}"
+            },
+            {
+              "name": "history",
+              "value": "={{ $json.reactState.history.join('\\n') }}"
+            },
+            {
+              "name": "finished",
+              "value": "=true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Подготовка ответа",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Инициализация ReAct",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Инициализация ReAct": {
+      "main": [
+        [
+          {
+            "node": "Получение следующего шага",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Получение следующего шага": {
+      "main": [
+        [
+          {
+            "node": "Парсинг ответа модели",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Парсинг ответа модели": {
+      "main": [
+        [
+          {
+            "node": "Завершено?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Завершено?": {
+      "main": [
+        [
+          {
+            "node": "Подготовка ответа",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Выбор инструмента",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Выбор инструмента": {
+      "main": [
+        [
+          {
+            "node": "Выполнение веб-поиска",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Обработка результата",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Выполнение веб-поиска": {
+      "main": [
+        [
+          {
+            "node": "Обработка результата",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Обработка результата": {
+      "main": [
+        [
+          {
+            "node": "Пауза",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Пауза": {
+      "main": [
+        [
+          {
+            "node": "Получение следующего шага",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

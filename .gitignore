@@ -1,0 +1,18 @@
+###> symfony/framework-bundle ###
+.env.local
+.env.*.local
+.env.dist
+
+
+###> PhpStorm project profile ###
+.idea/
+###< PhpStorm project profile ###
+
+###> vim ###
+.backup
+*.swp
+*.bak
+*.tmp
+###< vim ###
+*.tgz
+

@@ -1,0 +1,43 @@
+{
+  "name": "n8n-super-agent",
+  "version": "1.0.0",
+  "description": "Эффективный и экономичный ИИ-агент на базе n8n с динамическими промптами",
+  "main": "index.js",
+  "scripts": {
+    "start": "docker-compose up -d",
+    "stop": "docker-compose down",
+    "logs": "docker-compose logs -f",
+    "setup": "bash setup.sh",
+    "reset": "docker-compose down -v && docker-compose up -d",
+    "rotate-logs": "bash rotate-logs.sh",
+    "init-db": "docker exec -i n8n-super-agent_postgres_1 psql -U n8n -d n8n < init-db.sql"
+  },
+  "dependencies": {
+    "duck-duck-scrape": "^2.2.1",
+    "node-fetch": "^2.6.7",
+    "redis": "^4.6.6",
+    "uuid": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/n8n-super-agent.git"
+  },
+  "keywords": [
+    "n8n",
+    "agent",
+    "ai",
+    "llm",
+    "openai",
+    "chatbot",
+    "automation"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/yourusername/n8n-super-agent/issues"
+  },
+  "homepage": "https://github.com/yourusername/n8n-super-agent#readme"
+}

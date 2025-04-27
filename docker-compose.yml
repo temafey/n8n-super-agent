@@ -1,0 +1,170 @@
+version: '3.8'
+
+services:
+  n8n:
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=n8n
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - WEBHOOK_URL=http://localhost:5678/
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - N8N_CACHE_ENABLED=true
+      - N8N_CACHE_TYPE=redis
+      - N8N_REDIS_HOST=redis
+      - N8N_REDIS_PORT=6379
+      - N8N_REDIS_PASSWORD=${REDIS_PASSWORD}
+      - N8N_DEFAULT_CONCURRENCY=5
+      - EXECUTIONS_PROCESS=main
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/home/node/.n8n/workflows
+      - ./lib:/home/node/.n8n/lib
+      - ./logs/n8n:/home/node/.n8n/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - backend-network
+      - database-network
+
+  postgres:
+    image: postgres:14
+    restart: always
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    environment:
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=n8n
+      - POSTGRES_DB=n8n
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - MAX_CONNECTIONS=100
+      - SHARED_BUFFERS=256MB
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-custom.conf:/etc/postgresql/postgresql.conf
+      - ./logs/postgres:/var/log/postgresql
+    networks:
+      - database-network
+
+  zep:
+    image: ghcr.io/getzep/zep:latest
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - ZEP_MEMORY_STORE_POSTGRES_URI=postgres://zep:zep@postgres-zep:5432/zep
+      - ZEP_LOG_LEVEL=info
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - zep_data:/data
+      - ./zep-config.yaml:/app/config.yaml
+      - ./logs/zep:/var/log/zep
+    depends_on:
+      - postgres-zep
+    networks:
+      - backend-network
+      - database-network
+
+  postgres-zep:
+    image: postgres:14
+    restart: always
+    environment:
+      - POSTGRES_USER=zep
+      - POSTGRES_PASSWORD=zep
+      - POSTGRES_DB=zep
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_zep_data:/var/lib/postgresql/data
+      - ./logs/postgres-zep:/var/log/postgresql
+    networks:
+      - database-network
+      
+  redis:
+    image: redis:alpine
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+      - ./logs/redis:/var/log/redis
+    networks:
+      - backend-network
+
+  embeddings-service:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    restart: always
+    environment:
+      - MODEL_ID=sentence-transformers/all-MiniLM-L6-v2
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    networks:
+      - backend-network
+
+  weaviate:
+    image: semitechnologies/weaviate:1.19.6
+    restart: always
+    ports:
+      - "8087:8080"
+    environment:
+      - QUERY_DEFAULTS_LIMIT=20
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - DEFAULT_VECTORIZER_MODULE=text2vec-openai
+      - ENABLE_MODULES=text2vec-openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLUSTER_HOSTNAME=node1
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+      - ./logs/weaviate:/var/log/weaviate
+    networks:
+      - backend-network
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certs:/etc/nginx/certs
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - n8n
+      - zep
+      - weaviate
+    networks:
+      - frontend-network
+      - backend-network
+
+networks:
+  frontend-network:
+    # Сеть для внешнего доступа
+  backend-network:
+    # Сеть для внутренних сервисов
+  database-network:
+    # Сеть только для баз данных
+
+volumes:
+  n8n_data:
+  postgres_data:
+  postgres_zep_data:
+  zep_data:
+  redis_data:
+  weaviate_data:

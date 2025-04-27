@@ -1,0 +1,226 @@
+{
+  "name": "Супер-агент: Основной workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Извлекаем данные из запроса\nconst query = $input.body.query || '';\nconst userId = $input.body.userId || 'anonymous';\nconst sessionId = $input.body.sessionId || null;\n\n// Готовим данные для следующих шагов\nreturn {\n  query,\n  userId,\n  sessionId,\n  timestamp: new Date().toISOString(),\n  metadata: {\n    source: 'webhook',\n    ip: $input.headers['x-forwarded-for'] || $input.headers['x-real-ip'] || 'unknown'\n  }\n};"
+      },
+      "name": "Подготовка запроса",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Классифицируем текст\nconst body = {\n  text: item.query,\n  categories: [\n    \"Web search\",\n    \"HeyGen\",\n    \"Instagram Reels\",\n    \"Hacker News\",\n    \"Reddit\",\n    \"Calendar\",\n    \"Airtable Instagram\",\n    \"BAZA\",\n    \"TikTok\",\n    \"Copy News\"\n  ]\n};\n\nconst options = {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify(body)\n};\n\nconst url = 'http://localhost:8081/classify';\n\ntry {\n  const response = await fetch(url, options);\n  \n  if (!response.ok) {\n    throw new Error(`Error: ${response.status} ${response.statusText}`);\n  }\n  \n  const data = await response.json();\n  \n  return {\n    ...item,\n    language: data.language || 'русский',\n    category: data.category\n  };\n} catch (error) {\n  // В случае ошибки используем базовую категорию и язык\n  console.error('Classifier error:', error.message);\n  return {\n    ...item,\n    language: 'русский',\n    category: 'Web search'\n  };\n}"
+      },
+      "name": "Классификатор текста",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.category }}",
+              "operation": "contains",
+              "value2": "Web search"
+            }
+          ]
+        }
+      },
+      "name": "Маршрутизация",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "=http://localhost:5678/webhook/web-search",
+        "allowUnauthorizedCerts": true,
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={ \"query\": $json.query, \"userId\": $json.userId, \"sessionId\": $json.sessionId, \"language\": $json.language }"
+      },
+      "name": "Web Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "=http://localhost:5678/webhook/hacker-news",
+        "allowUnauthorizedCerts": true,
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={ \"query\": $json.query, \"userId\": $json.userId, \"sessionId\": $json.sessionId, \"language\": $json.language }"
+      },
+      "name": "Hacker News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1050,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "success",
+              "value": "true"
+            },
+            {
+              "name": "message",
+              "value": "Запрос успешно обработан"
+            },
+            {
+              "name": "result",
+              "value": "={{ $json.body || $json.data || 'Результат обработки' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Подготовка ответа",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Функция для логгирования\nfunction logRequest(data) {\n  console.log(`[${new Date().toISOString()}] Запрос обработан: ${JSON.stringify(data)}`);\n}\n\n// Логируем запрос\nlogRequest({\n  query: $input.query,\n  category: $input.category,\n  language: $input.language,\n  userId: $input.userId\n});\n\n// Возвращаем результат\nreturn $input;"
+      },
+      "name": "Логирование",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Подготовка запроса",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Подготовка запроса": {
+      "main": [
+        [
+          {
+            "node": "Классификатор текста",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Классификатор текста": {
+      "main": [
+        [
+          {
+            "node": "Маршрутизация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Маршрутизация": {
+      "main": [
+        [
+          {
+            "node": "Web Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hacker News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Search": {
+      "main": [
+        [
+          {
+            "node": "Подготовка ответа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hacker News": {
+      "main": [
+        [
+          {
+            "node": "Подготовка ответа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Подготовка ответа": {
+      "main": [
+        [
+          {
+            "node": "Логирование",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
