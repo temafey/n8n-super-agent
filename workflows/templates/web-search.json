@@ -62,7 +62,22 @@
     },
     {
       "parameters": {
-        "functionCode": "// Выполняем поиск в интернете\nconst { search } = require('duck-duck-scrape');\n\ntry {\n  const query = $input.query;\n  // Маппинг языков на локали\nconst languageToLocale = {\n  'русский': 'ru-ru',\n  'английский': 'en-us',\n  'испанский': 'es-es',\n  'французский': 'fr-fr',\n  'немецкий': 'de-de'\n};\n\nconst locale = languageToLocale[$input.language] || 'ru-ru';\n\nconst searchResults = await search(query, {\n  safeSearch: 'moderate',\n  locale: locale,\n  time: 'y' // За последний год\n});\n  \n  // Форматируем результаты\n  const formattedResults = searchResults.results.map(result => ({\n    title: result.title,\n    url: result.url,\n    description: result.description,\n    published: result.published\n  }));\n  \n  // Сохраняем результаты в кэш\n  try {\n    const redis = new (require('/home/node/.n8n/lib/redis-cache'))();\n    await redis.set($input.searchCacheKey, {\n      results: formattedResults,\n      timestamp: Date.now()\n    }, 3600); // Кэш на 1 час\n  } catch (cacheError) {\n    console.error('Redis cache save error:', cacheError);\n  }\n  \n  // Возвращаем результаты\n  return {\n    ...$input,\n    results: formattedResults,\n    source: 'web-search'\n  };\n} catch (error) {\n  console.error('Web search error:', error);\n  return {\n    ...$input,\n    error: true,\n    errorMessage: error.message\n  };\n}"
+        "functionCode": "// Выполняем поиск в интернете\nconst { search } = require('duck-duck-scrape');\n\ntry {\n  const query = $input.query;\n  // Маппинг языков на локали\nconst languageToLocale = {\n  'русский': 'ru-ru',\n  'английский': 'en-us',\n  'испанский': 'es-es',\n  'французский': 'fr-fr',\n  'немецкий': 'de-de'\n};\n\nconst locale = languageToLocale[$input.language] || 'ru-ru';\n\n// Маппинг языков на локали
+const languageToLocale = {
+  'русский': 'ru-ru',
+  'английский': 'en-us',
+  'испанский': 'es-es',
+  'французский': 'fr-fr',
+  'немецкий': 'de-de'
+};
+
+const locale = languageToLocale[$input.language] || 'ru-ru';
+
+const searchResults = await search(query, {
+  safeSearch: 'moderate',
+  locale: locale,
+  time: 'y' // За последний год
+});\n  \n  // Форматируем результаты\n  const formattedResults = searchResults.results.map(result => ({\n    title: result.title,\n    url: result.url,\n    description: result.description,\n    published: result.published\n  }));\n  \n  // Сохраняем результаты в кэш\n  try {\n    const redis = new (require('/home/node/.n8n/lib/redis-cache'))();\n    await redis.set($input.searchCacheKey, {\n      results: formattedResults,\n      timestamp: Date.now()\n    }, 3600); // Кэш на 1 час\n  } catch (cacheError) {\n    console.error('Redis cache save error:', cacheError);\n  }\n  \n  // Возвращаем результаты\n  return {\n    ...$input,\n    results: formattedResults,\n    source: 'web-search'\n  };\n} catch (error) {\n  console.error('Web search error:', error);\n  return {\n    ...$input,\n    error: true,\n    errorMessage: error.message\n  };\n}"
       },
       "name": "Выполнение поиска",
       "type": "n8n-nodes-base.function",

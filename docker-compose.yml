@@ -1,6 +1,23 @@
-version: '3.8'
-
 services:
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certs:/etc/nginx/certs
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - n8n
+      - zep
+      - weaviate
+    networks:
+      - frontend-network
+      - backend-network
+
   n8n:
     build:
       context: .
@@ -29,7 +46,8 @@ services:
       - N8N_REDIS_PORT=6379
       - N8N_REDIS_PASSWORD=${REDIS_PASSWORD}
       - N8N_DEFAULT_CONCURRENCY=5
-      - EXECUTIONS_PROCESS=main
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+#      - EXECUTIONS_PROCESS=main
     volumes:
       - n8n_data:/home/node/.n8n
       - ./workflows:/home/node/.n8n/workflows
@@ -43,7 +61,7 @@ services:
       - database-network
 
   postgres:
-    image: postgres:14
+    image: postgres:17-alpine
     restart: always
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     environment:
@@ -63,25 +81,28 @@ services:
 
   zep:
     image: ghcr.io/getzep/zep:latest
-    restart: always
-    ports:
-      - "8000:8000"
     environment:
-      - ZEP_MEMORY_STORE_POSTGRES_URI=postgres://zep:zep@postgres-zep:5432/zep
-      - ZEP_LOG_LEVEL=info
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ZEP_STORE_TYPE=postgres  # Тип хранилища (postgres, sqlite, memory)
+      - ZEP_EXTRACTORS_DOCUMENTS_EXTRACT=true  # Включить извлечение документов
+      - ZEP_EXTRACTORS_ENTITIES_EXTRACT=true   # Включить извлечение сущностей
+      - ZEP_EXTRACTORS_INTENT_EXTRACT=true     # Включить извлечение намерений
+      - ZEP_EXTRACTORS_SUMMARIZER_EXTRACT=true # Включить суммирование
+      - ZEP_AUTH_ENABLED=false                 # Отключить авторизацию для тестирования
+      - ZEP_OPENAI_API_KEY=${OPENAI_API_KEY}   # API-ключ OpenAI
     volumes:
       - zep_data:/data
       - ./zep-config.yaml:/app/config.yaml
       - ./logs/zep:/var/log/zep
     depends_on:
       - postgres-zep
+    ports:
+      - "8000:8000"
     networks:
       - backend-network
       - database-network
 
   postgres-zep:
-    image: postgres:14
+    image: postgres:17-alpine
     restart: always
     environment:
       - POSTGRES_USER=zep
@@ -91,7 +112,8 @@ services:
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - postgres_zep_data:/var/lib/postgresql/data
-      - ./logs/postgres-zep:/var/log/postgresql
+      - ./logs/postgres-zep:/var/log/postgresq
+      - ./postgres-custom.conf:/etc/postgresql/postgresql.conf
     networks:
       - database-network
       
@@ -109,7 +131,11 @@ services:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
     restart: always
     environment:
-      - MODEL_ID=sentence-transformers/all-MiniLM-L6-v2
+      # Заменяем модель на другую с поддержкой ONNX или меняем формат
+      - MODEL_ID=BAAI/bge-small-en-v1.5  # Альтернативная модель, хорошо работающая с ONNX
+      # ИЛИ указываем формат PyTorch вместо ONNX для оригинальной модели
+      # - MODEL_ID=sentence-transformers/all-MiniLM-L6-v2
+      - MODEL_FORMAT=pytorch  # Явно указываем PyTorch формат вместо ONNX
       - PORT=8080
     ports:
       - "8080:8080"
@@ -117,7 +143,7 @@ services:
       - backend-network
 
   weaviate:
-    image: semitechnologies/weaviate:1.19.6
+    image: semitechnologies/weaviate:1.30.1
     restart: always
     ports:
       - "8087:8080"
@@ -133,24 +159,6 @@ services:
       - weaviate_data:/var/lib/weaviate
       - ./logs/weaviate:/var/log/weaviate
     networks:
-      - backend-network
-
-  nginx:
-    image: nginx:alpine
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/certs:/etc/nginx/certs
-      - ./logs/nginx:/var/log/nginx
-    depends_on:
-      - n8n
-      - zep
-      - weaviate
-    networks:
-      - frontend-network
       - backend-network
 
 networks:

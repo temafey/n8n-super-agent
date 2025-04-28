@@ -6,7 +6,7 @@ server:
       - "*"
     allow_credentials: true
 
-datastore:
+store:
   type: postgres
   postgres:
     dsn: "postgres://zep:zep@postgres-zep:5432/zep?sslmode=disable"
@@ -20,20 +20,20 @@ nlp:
   chunker:
     strategy: recursive
     parameters:
-      chunk_size: 256            # Оптимизированный размер
-      chunk_overlap: 25          # Небольшое перекрытие для связности
+      chunk_size: 256
+      chunk_overlap: 25
       separators:
-        - "\n\n"                 # Параграфы
-        - "\n"                   # Строки
-        - ". "                   # Предложения
-        - "! "                   # Восклицания
-        - "? "                   # Вопросы
-        - ":"                    # Перечисления
-        - ";"                    # Перечисления
-        - ","                    # Списки
-        - " "                    # Слова (последний вариант)
+        - "\n\n"
+        - "\n"
+        - ". "
+        - "! "
+        - "? "
+        - ":"
+        - ";"
+        - ","
+        - " "
 
 memory:
-  message_window: 15             # Увеличенное окно сообщений
-  auto_summarize: true           # Включаем автоматическое резюмирование
-  auto_summarize_threshold: 12   # Порог для автоматического резюмирования
+  message_window: 15
+  auto_summarize: true
+  auto_summarize_threshold: 12
