@@ -2,7 +2,13 @@ services:
 
   nginx:
     image: nginx:alpine
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health", "-o", "/dev/null", "-s", "-w", "\'%{http_code}\'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     ports:
       - "80:80"
       - "443:443"
@@ -22,7 +28,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.n8n
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     ports:
       - "5678:5678"
     environment:
@@ -62,7 +74,13 @@ services:
 
   postgres:
     image: postgres:17-alpine
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     environment:
       - POSTGRES_USER=n8n
@@ -83,6 +101,7 @@ services:
     image: ghcr.io/getzep/zep:latest
     environment:
       - ZEP_STORE_TYPE=postgres  # Тип хранилища (postgres, sqlite, memory)
+      - ZEP_POSTGRES_DSN=postgres://zep:zep@postgres-zep:5432/zep?sslmode=disable
       - ZEP_EXTRACTORS_DOCUMENTS_EXTRACT=true  # Включить извлечение документов
       - ZEP_EXTRACTORS_ENTITIES_EXTRACT=true   # Включить извлечение сущностей
       - ZEP_EXTRACTORS_INTENT_EXTRACT=true     # Включить извлечение намерений
@@ -95,15 +114,24 @@ services:
       - ./logs/zep:/var/log/zep
     depends_on:
       - postgres-zep
+      - embeddings-service
     ports:
       - "8000:8000"
     networks:
       - backend-network
       - database-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/healthz" ]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   postgres-zep:
-    image: postgres:17-alpine
-    restart: always
+    # Заменяем образ на pgvector/pgvector
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=zep
       - POSTGRES_PASSWORD=zep
@@ -112,14 +140,25 @@ services:
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - postgres_zep_data:/var/lib/postgresql/data
-      - ./logs/postgres-zep:/var/log/postgresq
+      - ./logs/postgres-zep:/var/log/postgresql
       - ./postgres-custom.conf:/etc/postgresql/postgresql.conf
     networks:
       - database-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U zep" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
       
   redis:
     image: redis:alpine
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
@@ -129,13 +168,16 @@ services:
 
   embeddings-service:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     environment:
-      # Заменяем модель на другую с поддержкой ONNX или меняем формат
-      - MODEL_ID=BAAI/bge-small-en-v1.5  # Альтернативная модель, хорошо работающая с ONNX
-      # ИЛИ указываем формат PyTorch вместо ONNX для оригинальной модели
-      # - MODEL_ID=sentence-transformers/all-MiniLM-L6-v2
-      - MODEL_FORMAT=pytorch  # Явно указываем PyTorch формат вместо ONNX
+      - MODEL_ID=BAAI/bge-small-en-v1.5  # Модель для эмбеддингов
+      - MODEL_FORMAT=pytorch
       - PORT=8080
     ports:
       - "8080:8080"
@@ -144,7 +186,13 @@ services:
 
   weaviate:
     image: semitechnologies/weaviate:1.30.1
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
     ports:
       - "8087:8080"
     environment:

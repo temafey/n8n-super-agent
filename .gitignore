@@ -4,7 +4,6 @@
 .env.dist
 .env
 
-
 ###> PhpStorm project profile ###
 .idea/
 ###< PhpStorm project profile ###
@@ -17,4 +16,4 @@
 ###< vim ###
 *.tgz
 *.log
-
+.n8n_api_key
