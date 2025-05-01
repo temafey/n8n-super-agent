@@ -1,188 +1,81 @@
 {
-  "name": "Супер-агент: Web Search",
+  "name": "Веб-поиск Workflow",
+  "meta": {
+    "instanceId": "web-search-workflow-instance",
+    "templateCredsSetupCompleted": true
+  },
   "nodes": [
     {
+      "parameters": {},
+      "id": "c0236456-40be-4f8f-a730-e56cb62b7b5c",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "web-search",
-        "responseMode": "lastNode",
+        "url": "=https://api.searchengine.com/search?q={{ $json.query }}",
+        "authentication": "none",
         "options": {}
       },
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [
-        250,
-        300
-      ]
+      "id": "cc106fa0-6630-4c84-aea4-a4c7a3c149e9",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 600]
     },
     {
       "parameters": {
-        "functionCode": "// Извлекаем данные из запроса\nconst query = $input.body.query || '';\nconst userId = $input.body.userId || 'anonymous';\nconst sessionId = $input.body.sessionId || null;\nconst language = $input.body.language || 'русский';\n\n// Проверяем наличие необходимых параметров\nif (!query) {\n  return {\n    error: true,\n    message: 'Query parameter is required',\n    status: 400\n  };\n}\n\n// Готовим данные для Redis кэша\nconst searchCacheKey = `search:${query.substring(0, 100).replace(/\\s+/g, '_')}`;\n\n// Готовим данные для следующих шагов\nreturn {\n  query,\n  userId,\n  sessionId,\n  language,\n  searchCacheKey,\n  timestamp: new Date().toISOString(),\n  bypassCache: $input.body.bypassCache || false\n};"
+        "functionCode": "return items.map(item => {\n  // Extract search results from response\n  const results = item.json.results || [];\n  \n  // Format results into a more usable structure\n  return {\n    json: {\n      searchResults: results.map(result => ({\n        title: result.title,\n        url: result.url,\n        snippet: result.snippet\n      }))\n    }\n  };\n});"
       },
-      "name": "Подготовка запроса",
+      "id": "d93b4429-2200-4a84-8505-16266fedfccd",
+      "name": "Process Results",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [
-        450,
-        300
-      ]
+      "position": [1220, 600]
     },
     {
       "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// Проверяем Redis кэш\nconst redis = new (require('/home/node/.n8n/lib/redis-cache'))();\n\ntry {\n  // Если установлен флаг bypassCache, пропускаем проверку кэша\n  if (item.bypassCache) {\n    return {\n      ...item,\n      cacheChecked: true,\n      cacheHit: false\n    };\n  }\n  \n  // Проверяем кэш\n  const cachedResult = await redis.get(item.searchCacheKey);\n  \n  if (cachedResult) {\n    // Проверяем актуальность кэша (по умолчанию 60 минут)\n    const ttl = await redis.ttl(item.searchCacheKey);\n    const isCacheValid = ttl > 0;\n    \n    if (isCacheValid) {\n      // Возвращаем результат из кэша\n      return {\n        ...item,\n        cacheChecked: true,\n        cacheHit: true,\n        results: cachedResult.results,\n        cacheAge: Date.now() - cachedResult.timestamp\n      };\n    }\n  }\n  \n  // Кэш не найден или устарел\n  return {\n    ...item,\n    cacheChecked: true,\n    cacheHit: false\n  };\n} catch (error) {\n  console.error('Redis cache error:', error);\n  return {\n    ...item,\n    cacheChecked: true,\n    cacheHit: false,\n    cacheError: error.message\n  };\n}"
+        "respondWith": "json",
+        "responseBody": "={{ $json.searchResults }}",
+        "options": {}
       },
-      "name": "Проверка кэша",
-      "type": "n8n-nodes-base.code",
+      "id": "26f43f2c-1422-40de-9f40-dd2d80926b1c",
+      "name": "Return Results",
+      "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [
-        650,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.cacheHit }}",
-              "value2": true
-            }
-          ]
-        }
-      },
-      "name": "Кэш найден?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        850,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "functionCode": "// Выполняем поиск в интернете\nconst { search } = require('duck-duck-scrape');\n\ntry {\n  const query = $input.query;\n  // Маппинг языков на локали\nconst languageToLocale = {\n  'русский': 'ru-ru',\n  'английский': 'en-us',\n  'испанский': 'es-es',\n  'французский': 'fr-fr',\n  'немецкий': 'de-de'\n};\n\nconst locale = languageToLocale[$input.language] || 'ru-ru';\n\n// Маппинг языков на локали
-const languageToLocale = {
-  'русский': 'ru-ru',
-  'английский': 'en-us',
-  'испанский': 'es-es',
-  'французский': 'fr-fr',
-  'немецкий': 'de-de'
-};
-
-const locale = languageToLocale[$input.language] || 'ru-ru';
-
-const searchResults = await search(query, {
-  safeSearch: 'moderate',
-  locale: locale,
-  time: 'y' // За последний год
-});\n  \n  // Форматируем результаты\n  const formattedResults = searchResults.results.map(result => ({\n    title: result.title,\n    url: result.url,\n    description: result.description,\n    published: result.published\n  }));\n  \n  // Сохраняем результаты в кэш\n  try {\n    const redis = new (require('/home/node/.n8n/lib/redis-cache'))();\n    await redis.set($input.searchCacheKey, {\n      results: formattedResults,\n      timestamp: Date.now()\n    }, 3600); // Кэш на 1 час\n  } catch (cacheError) {\n    console.error('Redis cache save error:', cacheError);\n  }\n  \n  // Возвращаем результаты\n  return {\n    ...$input,\n    results: formattedResults,\n    source: 'web-search'\n  };\n} catch (error) {\n  console.error('Web search error:', error);\n  return {\n    ...$input,\n    error: true,\n    errorMessage: error.message\n  };\n}"
-      },
-      "name": "Выполнение поиска",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [
-        1050,
-        400
-      ]
-    },
-    {
-      "parameters": {
-        "chatPrompt": "# Промпт для веб-поиска\n\nВы выполняете веб-поиск. Используйте предоставленные результаты поиска для ответа на запрос пользователя.\n\n## Результаты поиска\n{% for result in $json.results %}\n{{ loop.index }}. {{ result.title }}\n   {{ result.description }}\n   {{ result.url }}\n   {% if result.published %}Опубликовано: {{ result.published }}{% endif %}\n\n{% endfor %}\n\n## Запрос пользователя\n{{ $json.query }}\n\n## Инструкции\n1. Сформируйте содержательный ответ на основе результатов поиска.\n2. Отвечайте на языке пользователя ({{ $json.language }}).\n3. Если в результатах поиска нет информации, релевантной запросу, честно скажите об этом.\n4. Не добавляйте информацию, которой нет в результатах поиска.\n5. Укажите источники информации в конце ответа.",
-        "options": {
-          "temperature": 0.2
-        }
-      },
-      "name": "Формирование ответа",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1,
-      "position": [
-        1250,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "functionCode": "// Если получен ответ из кэша, просто добавляем индикатор источника\nif ($input.cacheHit) {\n  return {\n    ...$input,\n    cached: true,\n    cacheAge: Math.round($input.cacheAge / 1000) + ' секунд',\n    data: $input.results\n  };\n}\n\n// Если получен ответ от openAI, форматируем его\nconst answer = $input.openAiOutput || 'Не удалось получить ответ.';\n\nreturn {\n  query: $input.query,\n  answer,\n  results: $input.results,\n  cached: false,\n  source: 'web-search'\n};"
-      },
-      "name": "Подготовка ответа",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [
-        1450,
-        300
-      ]
+      "position": [1440, 600]
     }
   ],
   "connections": {
-    "Webhook": {
+    "Manual Trigger": {
       "main": [
         [
           {
-            "node": "Подготовка запроса",
+            "node": "HTTP Request",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Подготовка запроса": {
+    "HTTP Request": {
       "main": [
         [
           {
-            "node": "Проверка кэша",
+            "node": "Process Results",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Проверка кэша": {
+    "Process Results": {
       "main": [
         [
           {
-            "node": "Кэш найден?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Кэш найден?": {
-      "main": [
-        [
-          {
-            "node": "Подготовка ответа",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Выполнение поиска",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Выполнение поиска": {
-      "main": [
-        [
-          {
-            "node": "Формирование ответа",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Формирование ответа": {
-      "main": [
-        [
-          {
-            "node": "Подготовка ответа",
+            "node": "Return Results",
             "type": "main",
             "index": 0
           }

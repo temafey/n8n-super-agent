@@ -1,0 +1,1841 @@
+{
+  "name": "Super Agent Workflow",
+  "nodes": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "Telegram1 Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "webhookId": "telegram-webhook-123",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Получает сообщения из Telegram",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "updateTypes": ["message", "edited_message", "voice", "document"]
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "name": "If1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Проверяет условия сообщения",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.message.hasOwnProperty('voice') }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000003",
+      "name": "Telegram2 sendChatActlon",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [500, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Отправляет статус 'печатает'",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "sendChatAction",
+        "chatId": "={{ $json.message.chat.id }}",
+        "action": "typing"
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000004",
+      "name": "Switch1",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [700, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Маршрутизирует на основе типа сообщения",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "conditions": [
+            {
+              "condition": "{{ $json.message.hasOwnProperty('voice') }}",
+              "path": "voice"
+            },
+            {
+              "condition": "{{ $json.message.hasOwnProperty('text') }}",
+              "path": "text"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000005",
+      "name": "Telegram3 get",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Получает файл из сообщения",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "getFile",
+        "fileId": "={{ $json.message.voice.file_id }}"
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000006",
+      "name": "OpenAI1 Transcribe Recording",
+      "type": "n8n-nodes-base.openai",
+      "typeVersion": 1,
+      "position": [1100, 200],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Транскрибирует голосовое сообщение",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "transcribeAudio",
+        "filePath": "={{ $json.file_path }}",
+        "model": "whisper-1"
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000007",
+      "name": "Set Chat",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Устанавливает контекст чата",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "message",
+              "value": "={{ $json.message.text || $json.transcription }}"
+            },
+            {
+              "name": "chatId",
+              "value": "={{ $json.message.chat.id }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000008",
+      "name": "Text Classificator routing agent",
+      "type": "n8n-nodes-base.openai",
+      "typeVersion": 1,
+      "position": [1100, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Классифицирует запрос",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "completion",
+        "model": "gpt-4.1-nano",
+        "prompt": "Please classify the text provided by the user into one of the following categories: Web search, HeyGen, Instagram Reels, Hacker News, Reddit, Calendar, Airtable Instagram, BAZA, TikTok, Copy News, and use the provided formatting instructions below. Don't explain, and only output the json."
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000009",
+      "name": "Model 4.1-nano",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [1300, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Маршрутизирует на основе классификации",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "conditions": [
+            {
+              "condition": "{{ $json.category === 'HackerNews' }}",
+              "path": "HackerNews"
+            },
+            {
+              "condition": "{{ $json.category === 'Reddit' }}",
+              "path": "Reddit"
+            },
+            {
+              "condition": "{{ $json.category === 'Expenses' }}",
+              "path": "Expenses"
+            },
+            {
+              "condition": "{{ $json.category === 'Web search' }}",
+              "path": "WebSearch"
+            },
+            {
+              "condition": "{{ $json.category === 'Wikipedia' }}",
+              "path": "Wikipedia"
+            },
+            {
+              "condition": "{{ $json.category === 'AirTable Instagram' }}",
+              "path": "AirTableInstagram"
+            },
+            {
+              "condition": "{{ $json.category === 'YouTube' }}",
+              "path": "YouTube"
+            },
+            {
+              "condition": "{{ $json.category === 'Copy News' }}",
+              "path": "CopyNews"
+            },
+            {
+              "condition": "{{ $json.category === 'TikTok' }}",
+              "path": "TikTok"
+            },
+            {
+              "condition": "{{ $json.category === 'BAZA' }}",
+              "path": "BAZA"
+            },
+            {
+              "condition": "{{ $json.category === 'Help' }}",
+              "path": "Help"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000010",
+      "name": "HackerNews Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1500, 200],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для HackerNews",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You fetch Hacker News articles."
+            },
+            {
+              "name": "memory",
+              "value": "hacker.news"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000011",
+      "name": "Reddit Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1500, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для Reddit",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You fetch Reddit posts."
+            },
+            {
+              "name": "memory",
+              "value": "reddit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000012",
+      "name": "Expenses Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1500, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для Expenses",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You manage expenses."
+            },
+            {
+              "name": "memory",
+              "value": "expenses"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000013",
+      "name": "Dynamic Model Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1500, 500],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для Dynamic Model",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You are a dynamic model that can adapt to various tasks."
+            },
+            {
+              "name": "memory",
+              "value": "dynamic_model"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000014",
+      "name": "Wikipedia Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1500, 600],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для Wikipedia",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You search for information in Wikipedia."
+            },
+            {
+              "name": "memory",
+              "value": "wikipedia"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000015",
+      "name": "BackUp Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1500, 700],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для BackUp",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You backup workflows and templates."
+            },
+            {
+              "name": "memory",
+              "value": "backup"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000016",
+      "name": "Help Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1700, 200],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для Help",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You are the Help Assistant for this n8n super-agent system. Your only job is to explain how users can invoke the system's capabilities by giving clear example user prompts. Do NOT call any tools or perform any actions—just show example requests."
+            },
+            {
+              "name": "memory",
+              "value": "help"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000017",
+      "name": "AirTable Instagram Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1700, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для AirTable Instagram",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You search and retrieve Instagram profile records from Airtable."
+            },
+            {
+              "name": "memory",
+              "value": "airtable_instagram"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000018",
+      "name": "YouTube Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1700, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для YouTube",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You search for YouTube videos."
+            },
+            {
+              "name": "memory",
+              "value": "youtube"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000019",
+      "name": "COPY NEWS Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1700, 500],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для COPY NEWS",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You define a target audience, source relevant news, and craft text posts for Telegram, Threads, or Instagram."
+            },
+            {
+              "name": "memory",
+              "value": "copy_news"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000020",
+      "name": "TikTok Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1700, 600],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для TikTok",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You discover similar TikTok profiles, analyze their best videos, and write a script for new content."
+            },
+            {
+              "name": "memory",
+              "value": "tiktok"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000021",
+      "name": "BAZA Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1700, 700],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Формирует промпт для BAZA",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "prompt",
+              "value": "You read from and write to the database."
+            },
+            {
+              "name": "memory",
+              "value": "baza"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000022",
+      "name": "Динамическая промпт + память",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1900, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Создает динамический промпт с использованием памяти",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Получаем базовый промпт\nconst basePrompt = items[0].json.prompt;\n\n// Получаем ключ памяти\nconst memoryKey = items[0].json.memory;\n\n// Добавляем сегодняшнюю дату\nconst today = new Date();\nconst dateStr = today.toISOString().split('T')[0];\n\n// Формируем итоговый промпт\nconst finalPrompt = `${basePrompt}\\n\\nTodays date: ${dateStr}\\n\\nImportant:\\n- Ensure you always call tools to get the latest information.\\n- If details are provided, create without questions.\\n- If you are confused, use the \"Think\" tool before proceeding.\\n- When creating new tasks, expenses or bills, format them professionally`;\n\n// Возвращаем результат\nreturn [\n  {\n    json: {\n      prompt: finalPrompt,\n      memory: memoryKey,\n      message: items[0].json.message,\n      chatId: items[0].json.chatId\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000023",
+      "name": "Chat manual",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1900, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Управляет чатом вручную",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика ручного управления чатом\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000024",
+      "name": "AI Agent Tools agent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [1900, 500],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Маршрутизирует к различным инструментам",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "conditions": [
+            {
+              "condition": "{{ $json.tool === 'think' }}",
+              "path": "Think"
+            },
+            {
+              "condition": "{{ $json.tool === 'heygen' }}",
+              "path": "HeyGen"
+            },
+            {
+              "condition": "{{ $json.tool === 'instagram_reels' }}",
+              "path": "InstagramReels"
+            },
+            {
+              "condition": "{{ $json.tool === 'dynamic_model' }}",
+              "path": "DynamicModel"
+            },
+            {
+              "condition": "{{ $json.tool === 'copywriter_news' }}",
+              "path": "CopywriterNews"
+            },
+            {
+              "condition": "{{ $json.tool === 'backup' }}",
+              "path": "Backup"
+            },
+            {
+              "condition": "{{ $json.tool === 'baza' }}",
+              "path": "Baza"
+            },
+            {
+              "condition": "{{ $json.tool === 'tiktok' }}",
+              "path": "TikTok"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000025",
+      "name": "Chat model memory Tools",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1900, 600],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Управляет памятью модели чата",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика управления памятью модели чата\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000026",
+      "name": "Telegram1 sendMessage",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2100, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Отправляет сообщение пользователю",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.response }}",
+        "additionalFields": {
+          "parseMode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000027",
+      "name": "Model 4.1-mini",
+      "type": "n8n-nodes-base.openai",
+      "typeVersion": 1,
+      "position": [2100, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Генерирует ответ с использованием модели",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "completion",
+        "model": "gpt-4.1-mini",
+        "prompt": "={{ $json.prompt }}",
+        "options": {
+          "maxTokens": 1000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000028",
+      "name": "Memory Zep Specifics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2300, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Сохраняет специфическую память",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://api.zep.ai/sessions/{{ $json.memory }}",
+        "method": "POST",
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "message",
+              "value": "={{ $json }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "3",
+          "name": "Zep API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000029",
+      "name": "Tool Think",
+      "type": "n8n-nodes-base.openai",
+      "typeVersion": 1,
+      "position": [2100, 500],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Инструмент для 'размышлений' агента",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "completion",
+        "model": "gpt-4.1-mini",
+        "prompt": "Use the tool to think about something. It will not obtain new information or change the database, but just append the thought to the log. Use it when complex reasoning or some cache memory is needed."
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000030",
+      "name": "Tool HeyGen AUTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2100, 600],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Инструмент для генерации аватаров и видео",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://api.heygen.com/v1/auto",
+        "method": "POST",
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "script",
+              "value": "={{ $json.script }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "4",
+          "name": "HeyGen API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000031",
+      "name": "Tool Instagram REELS Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2100, 700],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Инструмент для работы с Instagram Reels",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://api.example.com/instagram/reels",
+        "method": "POST",
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "query",
+              "value": "={{ $json.query }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "5",
+          "name": "Instagram API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000032",
+      "name": "Tool Dynamic model Agent",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2300, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Инструмент для работы с динамическими моделями",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика работы с динамическими моделями\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000033",
+      "name": "Tool Copywriter News Agent",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2300, 500],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Инструмент для создания новостных текстов",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика создания новостных текстов\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000034",
+      "name": "Tool Backup AGENT",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2300, 600],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Инструмент для резервного копирования",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика резервного копирования\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000035",
+      "name": "Tool BAZA AGENT",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2300, 700],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Инструмент для работы с базой данных",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика работы с базой данных\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000036",
+      "name": "Tool TikTok AGENT",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2500, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Инструмент для работы с TikTok",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика работы с TikTok\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000037",
+      "name": "Memory Zep All",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2500, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Сохраняет общую память",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://api.zep.ai/sessions/all",
+        "method": "POST",
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "message",
+              "value": "={{ $json }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "3",
+          "name": "Zep API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000038",
+      "name": "Airtable search: record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 1,
+      "position": [2500, 500],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Поиск записей в Airtable",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "list",
+        "application": "appXXXXXXXXXXXXXX",
+        "table": "tblXXXXXXXXXXXXXX"
+      },
+      "credentials": {
+        "airtableApi": {
+          "id": "6",
+          "name": "Airtable API"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000039",
+      "name": "Create Event create: event",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2500, 600],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Создает событие",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика создания события\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000040",
+      "name": "Get Event getAII: event",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2500, 700],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Получает событие",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика получения события\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000041",
+      "name": "Update Event create: event",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2700, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Обновляет событие",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика обновления события\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000042",
+      "name": "Delete Event create: event",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2700, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Удаляет событие",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "functionCode": "// Логика удаления события\nreturn items;"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000043",
+      "name": "Hacker News getAII: all",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2700, 500],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Получает все новости из Hacker News",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://hacker-news.firebaseio.com/v0/topstories.json",
+        "method": "GET",
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000044",
+      "name": "Reddit search: post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2700, 600],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Ищет посты на Reddit",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://www.reddit.com/search.json",
+        "method": "GET",
+        "options": {},
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "q",
+              "value": "={{ $json.query }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000045",
+      "name": "Search web Call this tool to perform",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2700, 700],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Выполняет поиск в интернете",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://api.searchapi.io/v1/search",
+        "method": "GET",
+        "options": {},
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "q",
+              "value": "={{ $json.query }}"
+            },
+            {
+              "name": "api_key",
+              "value": "your-api-key"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000046",
+      "name": "Wikipedia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2900, 300],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Ищет информацию в Wikipedia",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://en.wikipedia.org/w/api.php",
+        "method": "GET",
+        "options": {},
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "action",
+              "value": "query"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "prop",
+              "value": "extracts"
+            },
+            {
+              "name": "exintro",
+              "value": "true"
+            },
+            {
+              "name": "explaintext",
+              "value": "true"
+            },
+            {
+              "name": "titles",
+              "value": "={{ $json.query }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000047",
+      "name": "Youtube getAll video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2900, 400],
+      "webhookId": "",
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "Получает видео с YouTube",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/search",
+        "method": "GET",
+        "options": {},
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "part",
+              "value": "snippet"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.query }}"
+            },
+            {
+              "name": "type",
+              "value": "video"
+            },
+            {
+              "name": "maxResults",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "7",
+          "name": "YouTube API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram1 Trigger": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Telegram2 sendChatActlon",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram2 sendChatActlon": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Telegram3 get",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram3 get": {
+      "main": [
+        [
+          {
+            "node": "OpenAI1 Transcribe Recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI1 Transcribe Recording": {
+      "main": [
+        [
+          {
+            "node": "Set Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Chat": {
+      "main": [
+        [
+          {
+            "node": "Text Classificator routing agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Classificator routing agent": {
+      "main": [
+        [
+          {
+            "node": "Model 4.1-nano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model 4.1-nano": {
+      "main": [
+        [
+          {
+            "node": "HackerNews Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reddit Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Expenses Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dynamic Model Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wikipedia Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "BackUp Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Help Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AirTable Instagram Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "YouTube Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "COPY NEWS Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "TikTok Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "BAZA Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HackerNews Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expenses Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dynamic Model Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wikipedia Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BackUp Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Help Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AirTable Instagram Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YouTube Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "COPY NEWS Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TikTok Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BAZA Prompt": {
+      "main": [
+        [
+          {
+            "node": "Динамическая промпт + память",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Динамическая промпт + память": {
+      "main": [
+        [
+          {
+            "node": "Model 4.1-mini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model 4.1-mini": {
+      "main": [
+        [
+          {
+            "node": "Telegram1 sendMessage",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Memory Zep Specifics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent Tools agent": {
+      "main": [
+        [
+          {
+            "node": "Tool Think",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tool HeyGen AUTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tool Instagram REELS Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tool Dynamic model Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tool Copywriter News Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tool Backup AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tool BAZA AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tool TikTok AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "errorWorkflow": "VzqKEW0ShTXA5vPj",
+    "timezone": "America/New_York",
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "lastId": 47
+  }
+}

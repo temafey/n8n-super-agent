@@ -1,0 +1,150 @@
+{
+  "name": "HeyGen Workflow",
+  "meta": {
+    "instanceId": "heygen-workflow-instance",
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c0236456-40be-4f8f-a730-e56cb62b7b5c",
+      "name": "When clicking \"Generate Avatar\"",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.heygen.com/v1/avatars",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.heyGenApi.apiKey }}"
+            }
+          ]
+        },
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "template",
+              "value": "={{ $json.template }}"
+            },
+            {
+              "name": "voiceType",
+              "value": "={{ $json.voiceType }}"
+            },
+            {
+              "name": "script",
+              "value": "={{ $json.script }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cc106fa0-6630-4c84-aea4-a4c7a3c149e9",
+      "name": "Create Avatar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 600]
+    },
+    {
+      "parameters": {
+        "pollTimes": "={{ $json.estimatedTime / 5 }}",
+        "url": "=https://api.heygen.com/v1/avatars/{{ $json.avatarId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.heyGenApi.apiKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d93b4429-2200-4a84-8505-16266fedfccd",
+      "name": "Wait for Processing",
+      "type": "n8n-nodes-base.httpRequestWaitForCompletion",
+      "typeVersion": 1,
+      "position": [1220, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.socialmedia.com/publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "videoUrl",
+              "value": "={{ $json.videoUrl }}"
+            },
+            {
+              "name": "platform",
+              "value": "={{ $json.platform }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption }}"
+            },
+            {
+              "name": "scheduledTime",
+              "value": "={{ $json.scheduledTime }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26f43f2c-1422-40de-9f40-dd2d80926b1c",
+      "name": "Publish Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1440, 600]
+    }
+  ],
+  "connections": {
+    "When clicking \"Generate Avatar\"": {
+      "main": [
+        [
+          {
+            "node": "Create Avatar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Avatar": {
+      "main": [
+        [
+          {
+            "node": "Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Processing": {
+      "main": [
+        [
+          {
+            "node": "Publish Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

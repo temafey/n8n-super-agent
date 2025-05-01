@@ -21,7 +21,7 @@ for template in "$TEMPLATES_DIR"/*.json; do
         filename=$(basename -- "$template")
         log "Importing template: $filename"
         
-        result=$(curl -X POST "http://localhost:5678/rest/workflows" \
+        result=$(curl -X POST "http://localhost/rest/workflows" \
           -H "X-N8N-API-KEY: $N8N_API_KEY" \
           -H "Content-Type: application/json" \
           -d @"$template" -s)

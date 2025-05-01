@@ -1,0 +1,346 @@
+{
+  "name": "Календарь Workflow",
+  "meta": {
+    "instanceId": "calendar-workflow-instance",
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "calendar",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c0236456-40be-4f8f-a730-e56cb62b7b5c",
+      "name": "Calendar Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse incoming request data\nreturn items.map(item => {\n  const data = item.json;\n  \n  // Determine the action (create, update, get, delete)\n  const action = data.action || 'get';\n  \n  // Format event data if provided\n  let eventData = {};\n  if (data.event) {\n    eventData = {\n      summary: data.event.title,\n      description: data.event.description,\n      start: {\n        dateTime: data.event.startDateTime,\n        timeZone: data.event.timeZone || 'UTC'\n      },\n      end: {\n        dateTime: data.event.endDateTime,\n        timeZone: data.event.timeZone || 'UTC'\n      },\n      attendees: (data.event.attendees || []).map(email => ({ email })),\n      reminders: {\n        useDefault: true\n      }\n    };\n  }\n  \n  return {\n    json: {\n      action,\n      eventId: data.eventId,\n      eventData,\n      calendarId: data.calendarId || 'primary',\n      dateTimeMin: data.dateTimeMin,\n      dateTimeMax: data.dateTimeMax\n    }\n  };\n});"
+      },
+      "id": "d93b4429-2200-4a84-8505-16266fedfccd",
+      "name": "Parse Request",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1000, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "d3afe65c-7c80-4caa-9d1c-33c62fbc2197",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "create",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2ed874a9-5bcf-4cc9-9b52-ea503a562892",
+      "name": "Action Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1220, 600]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "create",
+        "calendarId": "={{ $json.calendarId }}",
+        "summary": "={{ $json.eventData.summary }}",
+        "description": "={{ $json.eventData.description }}",
+        "start": "={{ $json.eventData.start }}",
+        "end": "={{ $json.eventData.end }}",
+        "attendees": "={{ $json.eventData.attendees }}",
+        "options": {
+          "reminders": "={{ $json.eventData.reminders }}"
+        }
+      },
+      "id": "26f43f2c-1422-40de-9f40-dd2d80926b1c",
+      "name": "Create Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [1440, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "d3afe65c-7c80-4caa-9d1c-33c62fbc2197",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "update",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0fa1fbf6-fe77-4044-a445-c49a1db37dec",
+      "name": "Check Update Action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1440, 600]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "update",
+        "calendarId": "={{ $json.calendarId }}",
+        "eventId": "={{ $json.eventId }}",
+        "summary": "={{ $json.eventData.summary }}",
+        "description": "={{ $json.eventData.description }}",
+        "start": "={{ $json.eventData.start }}",
+        "end": "={{ $json.eventData.end }}",
+        "attendees": "={{ $json.eventData.attendees }}",
+        "options": {
+          "reminders": "={{ $json.eventData.reminders }}"
+        }
+      },
+      "id": "09b8584c-4ead-4007-a6cd-edaa4669a757",
+      "name": "Update Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [1660, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "d3afe65c-7c80-4caa-9d1c-33c62fbc2197",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "delete",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1c5c81c6-f532-4c82-a7a0-53b0b5b823d8",
+      "name": "Check Delete Action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1440, 800]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "delete",
+        "calendarId": "={{ $json.calendarId }}",
+        "eventId": "={{ $json.eventId }}",
+        "options": {}
+      },
+      "id": "5dc6a7e9-034f-4f1a-9a48-41bb3a0b23a5",
+      "name": "Delete Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [1660, 800]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "getAll",
+        "calendarId": "={{ $json.calendarId }}",
+        "options": {
+          "timeMin": "={{ $json.dateTimeMin }}",
+          "timeMax": "={{ $json.dateTimeMax }}"
+        }
+      },
+      "id": "7b9481a9-c66e-4d6a-b4d3-b2352c0b9854",
+      "name": "Get Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [1660, 1000]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": {
+          "values": []
+        },
+        "options": {}
+      },
+      "id": "9c3a4f12-71f9-4f0a-928c-7b84b3c9b4a2",
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1880, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "a4b5c6d7-e8f9-0g1h-2i3j-4k5l6m7n8o9p",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2100, 600]
+    }
+  ],
+  "connections": {
+    "Calendar Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Action Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action Router": {
+      "main": [
+        [
+          {
+            "node": "Create Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Update Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Event": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Update Action": {
+      "main": [
+        [
+          {
+            "node": "Update Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Delete Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Event": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Check Delete Action": {
+      "main": [
+        [
+          {
+            "node": "Delete Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Event": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Get Events": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Combine Results": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

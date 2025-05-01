@@ -2,6 +2,7 @@
   "name": "Супер-агент: Основной workflow",
   "nodes": [
     {
+      "id": "webhook-main-001",
       "parameters": {
         "httpMethod": "POST",
         "path": "agent",
@@ -11,24 +12,38 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [
-        250,
-        300
-      ]
+      "position": [250, 300],
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow"
     },
     {
+      "id": "function-prep-002",
       "parameters": {
         "functionCode": "// Извлекаем данные из запроса\nconst query = $input.body.query || '';\nconst userId = $input.body.userId || 'anonymous';\nconst sessionId = $input.body.sessionId || null;\n\n// Готовим данные для следующих шагов\nreturn {\n  query,\n  userId,\n  sessionId,\n  timestamp: new Date().toISOString(),\n  metadata: {\n    source: 'webhook',\n    ip: $input.headers['x-forwarded-for'] || $input.headers['x-real-ip'] || 'unknown'\n  }\n};"
       },
       "name": "Подготовка запроса",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [
-        450,
-        300
-      ]
+      "position": [450, 300],
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow"
     },
     {
+      "id": "code-class-003",
       "parameters": {
         "mode": "runOnceForEachItem",
         "jsCode": "// Классифицируем текст\nconst body = {\n  text: item.query,\n  categories: [\n    \"Web search\",\n    \"HeyGen\",\n    \"Instagram Reels\",\n    \"Hacker News\",\n    \"Reddit\",\n    \"Calendar\",\n    \"Airtable Instagram\",\n    \"BAZA\",\n    \"TikTok\",\n    \"Copy News\"\n  ]\n};\n\nconst options = {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify(body)\n};\n\nconst url = 'http://localhost:8081/classify';\n\ntry {\n  const response = await fetch(url, options);\n  \n  if (!response.ok) {\n    throw new Error(`Error: ${response.status} ${response.statusText}`);\n  }\n  \n  const data = await response.json();\n  \n  return {\n    ...item,\n    language: data.language || 'русский',\n    category: data.category\n  };\n} catch (error) {\n  // В случае ошибки используем базовую категорию и язык\n  console.error('Classifier error:', error.message);\n  return {\n    ...item,\n    language: 'русский',\n    category: 'Web search'\n  };\n}"
@@ -36,12 +51,19 @@
       "name": "Классификатор текста",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        650,
-        300
-      ]
+      "position": [650, 300],
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow"
     },
     {
+      "id": "switch-route-004",
       "parameters": {
         "conditions": {
           "string": [
@@ -56,12 +78,19 @@
       "name": "Маршрутизация",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
-      "position": [
-        850,
-        300
-      ]
+      "position": [850, 300],
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow"
     },
     {
+      "id": "httpreq-websearch-005",
       "parameters": {
         "requestMethod": "POST",
         "url": "=http://localhost:5678/webhook/web-search",
@@ -73,12 +102,19 @@
       "name": "Web Search",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [
-        1050,
-        200
-      ]
+      "position": [1050, 200],
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow"
     },
     {
+      "id": "httpreq-hackernews-006",
       "parameters": {
         "requestMethod": "POST",
         "url": "=http://localhost:5678/webhook/hacker-news",
@@ -90,12 +126,19 @@
       "name": "Hacker News",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [
-        1050,
-        400
-      ]
+      "position": [1050, 400],
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow"
     },
     {
+      "id": "set-prepare-007",
       "parameters": {
         "keepOnlySet": true,
         "values": {
@@ -119,22 +162,35 @@
       "name": "Подготовка ответа",
       "type": "n8n-nodes-base.set",
       "typeVersion": 1,
-      "position": [
-        1250,
-        300
-      ]
+      "position": [1250, 300],
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow"
     },
     {
+      "id": "function-log-008",
       "parameters": {
         "functionCode": "// Функция для логгирования\nfunction logRequest(data) {\n  console.log(`[${new Date().toISOString()}] Запрос обработан: ${JSON.stringify(data)}`);\n}\n\n// Логируем запрос\nlogRequest({\n  query: $input.query,\n  category: $input.category,\n  language: $input.language,\n  userId: $input.userId\n});\n\n// Возвращаем результат\nreturn $input;"
       },
       "name": "Логирование",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [
-        1450,
-        300
-      ]
+      "position": [1450, 300],
+      "disabled": false,
+      "notesInFlow": false,
+      "notes": "",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 0,
+      "waitBetweenTries": 0,
+      "onError": "stopWorkflow"
     }
   ],
   "connections": {
@@ -222,5 +278,17 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "UTC",
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "lastId": 1
   }
 }

@@ -1,15 +1,21 @@
 services:
 
   nginx:
-    image: nginx:alpine
-    restart: always
+    image: docker.io/library/nginx:alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health", "-o", "/dev/null", "-s", "-w", "%{http_code}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:Z
-      - ./nginx/certs:/etc/nginx/certs:Z
-      - ./logs/nginx:/var/log/nginx:Z
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certs:/etc/nginx/certs
+      - ./logs/nginx:/var/log/nginx
     depends_on:
       - n8n
       - zep
@@ -22,7 +28,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.n8n
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     ports:
       - "5678:5678"
     environment:
@@ -47,11 +59,12 @@ services:
       - N8N_REDIS_PASSWORD=${REDIS_PASSWORD}
       - N8N_DEFAULT_CONCURRENCY=5
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+#      - EXECUTIONS_PROCESS=main
     volumes:
-      - n8n_data:/home/node/.n8n:Z
-      - ./workflows:/home/node/.n8n/workflows:Z
-      - ./lib:/home/node/.n8n/lib:Z
-      - ./logs/n8n:/home/node/.n8n/logs:Z
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/home/node/.n8n/workflows
+      - ./lib:/home/node/.n8n/lib
+      - ./logs/n8n:/home/node/.n8n/logs
     depends_on:
       - postgres
       - redis
@@ -60,8 +73,14 @@ services:
       - database-network
 
   postgres:
-    image: postgres:17-alpine
-    restart: always
+    image: docker.io/library/postgres:17-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     environment:
       - POSTGRES_USER=n8n
@@ -72,37 +91,47 @@ services:
       - MAX_CONNECTIONS=100
       - SHARED_BUFFERS=256MB
     volumes:
-      - postgres_data:/var/lib/postgresql/data:Z
-      - ./postgres-custom.conf:/etc/postgresql/postgresql.conf:Z
-      - ./logs/postgres:/var/log/postgresql:Z
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-custom.conf:/etc/postgresql/postgresql.conf
+      - ./logs/postgres:/var/log/postgresql
     networks:
       - database-network
 
   zep:
     image: ghcr.io/getzep/zep:latest
     environment:
-      - ZEP_STORE_TYPE=postgres
-      - ZEP_EXTRACTORS_DOCUMENTS_EXTRACT=true
-      - ZEP_EXTRACTORS_ENTITIES_EXTRACT=true
-      - ZEP_EXTRACTORS_INTENT_EXTRACT=true
-      - ZEP_EXTRACTORS_SUMMARIZER_EXTRACT=true
-      - ZEP_AUTH_ENABLED=false
-      - ZEP_OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ZEP_STORE_TYPE=postgres  # Тип хранилища (postgres, sqlite, memory)
+      - ZEP_POSTGRES_DSN=postgres://zep:zep@postgres-zep:5432/zep?sslmode=disable
+      - ZEP_EXTRACTORS_DOCUMENTS_EXTRACT=true  # Включить извлечение документов
+      - ZEP_EXTRACTORS_ENTITIES_EXTRACT=true   # Включить извлечение сущностей
+      - ZEP_EXTRACTORS_INTENT_EXTRACT=true     # Включить извлечение намерений
+      - ZEP_EXTRACTORS_SUMMARIZER_EXTRACT=true # Включить суммирование
+      - ZEP_AUTH_ENABLED=false                 # Отключить авторизацию для тестирования
+      - ZEP_OPENAI_API_KEY=${OPENAI_API_KEY}   # API-ключ OpenAI
     volumes:
-      - zep_data:/data:Z
-      - ./zep-config.yaml:/app/config.yaml:Z
-      - ./logs/zep:/var/log/zep:Z
+      - zep_data:/data
+      - ./zep-config.yaml:/app/config.yaml
+      - ./logs/zep:/var/log/zep
     depends_on:
       - postgres-zep
+      - embeddings-service
     ports:
       - "8000:8000"
     networks:
       - backend-network
       - database-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/healthz" ]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   postgres-zep:
-    image: postgres:17-alpine
-    restart: always
+    # Заменяем образ на pgvector/pgvector
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=zep
       - POSTGRES_PASSWORD=zep
@@ -110,27 +139,44 @@ services:
       - POSTGRES_HOST_AUTH_METHOD=trust
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
-      - postgres_zep_data:/var/lib/postgresql/data:Z
-      - ./logs/postgres-zep:/var/log/postgresql:Z
-      - ./postgres-custom.conf:/etc/postgresql/postgresql.conf:Z
+      - postgres_zep_data:/var/lib/postgresql/data
+      - ./logs/postgres-zep:/var/log/postgresql
+      - ./postgres-custom.conf:/etc/postgresql/postgresql.conf
     networks:
       - database-network
-
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U zep" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+      
   redis:
-    image: redis:alpine
-    restart: always
+    image: docker.io/library/redis:alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
-      - redis_data:/data:Z
-      - ./logs/redis:/var/log/redis:Z
+      - redis_data:/data
+      - ./logs/redis:/var/log/redis
     networks:
       - backend-network
 
   embeddings-service:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     environment:
-      - MODEL_ID=BAAI/bge-small-en-v1.5
+      - MODEL_ID=BAAI/bge-small-en-v1.5  # Модель для эмбеддингов
       - MODEL_FORMAT=pytorch
       - PORT=8080
     ports:
@@ -139,8 +185,14 @@ services:
       - backend-network
 
   weaviate:
-    image: semitechnologies/weaviate:1.30.1
-    restart: always
+    image: docker.io/semitechnologies/weaviate:1.30.1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
     ports:
       - "8087:8080"
     environment:
@@ -152,8 +204,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CLUSTER_HOSTNAME=node1
     volumes:
-      - weaviate_data:/var/lib/weaviate:Z
-      - ./logs/weaviate:/var/log/weaviate:Z
+      - weaviate_data:/var/lib/weaviate
+      - ./logs/weaviate:/var/log/weaviate
     networks:
       - backend-network
 

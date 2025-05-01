@@ -1,0 +1,209 @@
+{
+  "name": "Копирование Новостей Workflow",
+  "meta": {
+    "instanceId": "copy-news-workflow-instance",
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c0236456-40be-4f8f-a730-e56cb62b7b5c",
+      "name": "Start News Generator",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Define target audience based on input\nreturn items.map(item => {\n  const audience = item.json.audience || {};\n  \n  // Default values if not provided\n  const defaultAudience = {\n    interests: ['technology', 'business', 'science'],\n    age: '25-45',\n    region: 'global',\n    knowledgeLevel: 'intermediate'\n  };\n  \n  // Merge with defaults\n  const targetAudience = {\n    ...defaultAudience,\n    ...audience\n  };\n  \n  return {\n    json: {\n      targetAudience,\n      newsSources: item.json.newsSources || [\n        'https://newsapi.org',\n        'https://api.nytimes.com',\n        'https://api.reuters.com'\n      ],\n      topicKeywords: item.json.topicKeywords || [],\n      postsToGenerate: item.json.postsToGenerate || 3,\n      telegramChatId: item.json.telegramChatId\n    }\n  };\n});"
+      },
+      "id": "d93b4429-2200-4a84-8505-16266fedfccd",
+      "name": "Define Audience",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1000, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://newsapi.org/v2/top-headlines",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "{{ $credentials.newsApi.apiKey }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "country",
+              "value": "={{ $json.targetAudience.region === 'global' ? 'us' : $json.targetAudience.region }}"
+            },
+            {
+              "name": "category",
+              "value": "={{ $json.targetAudience.interests[0] }}"
+            },
+            {
+              "name": "pageSize",
+              "value": 20
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cc106fa0-6630-4c84-aea4-a4c7a3c149e9",
+      "name": "Fetch News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1220, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Filter and rank news items\nreturn items.map(item => {\n  const articles = item.json.articles || [];\n  const targetAudience = item.json.targetAudience;\n  const topicKeywords = item.json.topicKeywords || [];\n  \n  // Score articles based on relevance to audience and keywords\n  const scoredArticles = articles.map(article => {\n    let score = 0;\n    \n    // Score by keywords in title/description\n    const content = (article.title + ' ' + (article.description || '')).toLowerCase();\n    \n    // Score by audience interests\n    targetAudience.interests.forEach(interest => {\n      if (content.includes(interest.toLowerCase())) {\n        score += 5;\n      }\n    });\n    \n    // Score by topic keywords\n    topicKeywords.forEach(keyword => {\n      if (content.includes(keyword.toLowerCase())) {\n        score += 10;\n      }\n    });\n    \n    // Bonus for recency\n    const pubDate = new Date(article.publishedAt);\n    const now = new Date();\n    const hoursAgo = (now - pubDate) / (1000 * 60 * 60);\n    if (hoursAgo < 12) {\n      score += 3;\n    } else if (hoursAgo < 24) {\n      score += 2;\n    } else if (hoursAgo < 48) {\n      score += 1;\n    }\n    \n    return {\n      ...article,\n      relevanceScore: score\n    };\n  });\n  \n  // Sort by score and take top N\n  const topArticles = scoredArticles\n    .sort((a, b) => b.relevanceScore - a.relevanceScore)\n    .slice(0, item.json.postsToGenerate);\n  \n  return {\n    json: {\n      topArticles,\n      targetAudience,\n      postsToGenerate: item.json.postsToGenerate,\n      telegramChatId: item.json.telegramChatId\n    }\n  };\n});"
+      },
+      "id": "2ed874a9-5bcf-4cc9-9b52-ea503a562892",
+      "name": "Filter Relevant News",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1440, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.openaiApi.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4"
+            },
+            {
+              "name": "messages",
+              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are a professional copywriter who creates engaging Telegram posts based on news articles. Adapt your writing style to the target audience.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Create {{ $json.postsToGenerate }} unique Telegram posts based on these news articles:\\n\\n{{ JSON.stringify($json.topArticles, null, 2) }}\\n\\nTarget audience:\\n{{ JSON.stringify($json.targetAudience, null, 2) }}\\n\\nEach post should be concise, engaging, include relevant emojis, have a clear headline, a brief summary of the news, and end with 3-5 relevant hashtags.\"\n  }\n]"
+            },
+            {
+              "name": "temperature",
+              "value": 0.7
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26f43f2c-1422-40de-9f40-dd2d80926b1c",
+      "name": "Generate Telegram Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1660, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse the generated posts and format for output\nreturn items.map(item => {\n  const response = item.json;\n  const content = response.choices[0].message.content;\n  const posts = content.split('\\n\\n\\n') // Triple newline usually separates posts\n    .filter(post => post.trim().length > 0)\n    .map((post, index) => ({\n      id: index + 1,\n      content: post,\n      sourceUrl: item.json.topArticles[index] ? item.json.topArticles[index].url : null,\n      sourceTitle: item.json.topArticles[index] ? item.json.topArticles[index].title : null\n    }));\n  \n  return {\n    json: {\n      posts,\n      generatedAt: new Date().toISOString(),\n      targetAudience: item.json.targetAudience,\n      telegramChatId: item.json.telegramChatId\n    }\n  };\n});"
+      },
+      "id": "0fa1fbf6-fe77-4044-a445-c49a1db37dec",
+      "name": "Format Posts",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1880, 600]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegramChatId }}",
+        "text": "={% for post in $json.posts %}\n{{ post.content }}\n\nSource: {{ post.sourceTitle }}\n{{ post.sourceUrl }}\n\n---\n\n{% endfor %}"
+      },
+      "id": "09b8584c-4ead-4007-a6cd-edaa4669a757",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2100, 600]
+    }
+  ],
+  "connections": {
+    "Start News Generator": {
+      "main": [
+        [
+          {
+            "node": "Define Audience",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define Audience": {
+      "main": [
+        [
+          {
+            "node": "Fetch News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch News": {
+      "main": [
+        [
+          {
+            "node": "Filter Relevant News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Relevant News": {
+      "main": [
+        [
+          {
+            "node": "Generate Telegram Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Telegram Posts": {
+      "main": [
+        [
+          {
+            "node": "Format Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Posts": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

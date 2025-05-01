@@ -31,6 +31,38 @@ restart:
 	@$(COMPOSE_CMD) restart
 	@echo "${GREEN}Контейнеры перезапущены${NC}"
 
+# Сборка образов
+build:
+	@echo "${GREEN}Сборка образов контейнеров с Docker...${NC}"
+	@$(COMPOSE_CMD) build
+	@echo "${GREEN}Образы собраны. Используйте 'make start' для запуска контейнеров.${NC}"
+
+# Сборка и запуск
+up:
+	@echo "${GREEN}Сборка и запуск контейнеров с Docker...${NC}"
+	@$(COMPOSE_CMD) up -d --build
+	@echo "${GREEN}Контейнеры собраны и запущены. n8n доступен по адресу: https://localhost${NC}"
+
+# Пересборка конкретного сервиса
+rebuild-service:
+	@read -p "Введите имя сервиса для пересборки: " service; \
+	echo "${GREEN}Пересборка сервиса $$service...${NC}"; \
+	$(COMPOSE_CMD) build --no-cache $$service; \
+	echo "${GREEN}Сервис $$service пересобран. Выполните 'make restart' для применения изменений.${NC}"
+
+# Обновление зависимостей и пересборка всех образов
+rebuild-all:
+	@echo "${GREEN}Полная пересборка всех образов (с отключенным кешем)...${NC}"
+	@$(COMPOSE_CMD) build --no-cache
+	@echo "${GREEN}Все образы пересобраны. Выполните 'make restart' для применения изменений.${NC}"
+
+# Обновление базовых образов и пересборка
+pull-build:
+	@echo "${GREEN}Обновление базовых образов и пересборка...${NC}"
+	@$(COMPOSE_CMD) pull
+	@$(COMPOSE_CMD) build
+	@echo "${GREEN}Образы обновлены и пересобраны. Выполните 'make restart' для применения изменений.${NC}"
+
 # Проверка статуса системы
 status:
 	@echo "${GREEN}Статус контейнеров (Docker):${NC}"

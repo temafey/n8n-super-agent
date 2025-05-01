@@ -1,0 +1,188 @@
+{
+  "name": "Reddit Workflow",
+  "meta": {
+    "instanceId": "reddit-workflow-instance",
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c0236456-40be-4f8f-a730-e56cb62b7b5c",
+      "name": "Start Reddit Monitor",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.reddit.com/r/{{ $json.subreddit }}/top.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "t",
+              "value": "={{ $json.timeframe || 'day' }}"
+            },
+            {
+              "name": "limit",
+              "value": "={{ $json.limit || 25 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cc106fa0-6630-4c84-aea4-a4c7a3c149e9",
+      "name": "Get Top Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map(item => {\n  // Extract post data\n  const posts = item.json.data.children.map(child => child.data);\n  \n  // Filter and format posts\n  const formattedPosts = posts.map(post => ({\n    title: post.title,\n    author: post.author,\n    url: `https://www.reddit.com${post.permalink}`,\n    score: post.score,\n    numComments: post.num_comments,\n    created: new Date(post.created_utc * 1000).toISOString(),\n    selftext: post.selftext,\n    mediaUrl: post.url,\n    isVideo: post.is_video\n  }));\n  \n  return {\n    json: {\n      posts: formattedPosts,\n      subreddit: item.json.data?.children?.[0]?.data?.subreddit || $json.subreddit\n    }\n  };\n});"
+      },
+      "id": "d93b4429-2200-4a84-8505-16266fedfccd",
+      "name": "Process Posts",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1220, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "d3afe65c-7c80-4caa-9d1c-33c62fbc2197",
+              "leftValue": "={{ $json.posts.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "larger",
+                "name": "filter.operator.larger"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2ed874a9-5bcf-4cc9-9b52-ea503a562892",
+      "name": "Check Posts Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1440, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.openaiApi.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4"
+            },
+            {
+              "name": "messages",
+              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are a data analyst who specializes in analyzing Reddit posts. Create a brief summary of trends and patterns from the posts provided.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Analyze these Reddit posts from r/{{ $json.subreddit }}:\\n{{ JSON.stringify($json.posts.slice(0, 10), null, 2) }}\\nProvide a summary of key themes, trends, and engagement patterns.\"\n  }\n]"
+            },
+            {
+              "name": "temperature",
+              "value": 0.5
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26f43f2c-1422-40de-9f40-dd2d80926b1c",
+      "name": "Analyze Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1660, 500]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"error\",\n  \"message\": \"No posts found for subreddit: \" + $json.subreddit\n} }}",
+        "options": {}
+      },
+      "id": "e1f5a631-b924-48f9-9cb2-f95a4b06e2a8",
+      "name": "Return Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1660, 700]
+    }
+  ],
+  "connections": {
+    "Start Reddit Monitor": {
+      "main": [
+        [
+          {
+            "node": "Get Top Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Top Posts": {
+      "main": [
+        [
+          {
+            "node": "Process Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Posts": {
+      "main": [
+        [
+          {
+            "node": "Check Posts Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Posts Found": {
+      "main": [
+        [
+          {
+            "node": "Analyze Posts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "name": "Hacker News Workflow",
+  "meta": {
+    "instanceId": "hacker-news-workflow-instance",
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "c0236456-40be-4f8f-a730-e56cb62b7b5c",
+      "name": "Schedule",
+      "type": "n8n-nodes-base.schedule",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://hacker-news.firebaseio.com/v0/topstories.json",
+        "options": {}
+      },
+      "id": "cc106fa0-6630-4c84-aea4-a4c7a3c149e9",
+      "name": "Get Top Stories",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map(item => {\n  // Extract first 5 story IDs\n  const storyIds = item.json.slice(0, 5);\n  \n  // Return one item per story ID\n  return storyIds.map(storyId => ({\n    json: { storyId }\n  }));\n});\n"
+      },
+      "id": "d93b4429-2200-4a84-8505-16266fedfccd",
+      "name": "Process Story IDs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1220, 600]
+    },
+    {
+      "parameters": {
+        "url": "=https://hacker-news.firebaseio.com/v0/item/{{ $json.storyId }}.json",
+        "options": {}
+      },
+      "id": "26f43f2c-1422-40de-9f40-dd2d80926b1c",
+      "name": "Get Story Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1440, 600]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": {
+          "values": []
+        },
+        "options": {}
+      },
+      "id": "0fa1fbf6-fe77-4044-a445-c49a1db37dec",
+      "name": "Combine Stories",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1660, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process combined stories\nreturn items.map(item => {\n  return {\n    json: {\n      stories: items.map(i => i.json),\n      emailRecipient: '{{ $json.emailRecipient || \"user@example.com\" }}'\n    }\n  };\n});"
+      },
+      "id": "a7e43b99-f29b-45a0-83ef-5a2ba436f7e2",
+      "name": "Format Email Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1880, 600]
+    },
+    {
+      "parameters": {
+        "to": "={{ $json.emailRecipient }}",
+        "subject": "Today's Top Hacker News Stories",
+        "emailType": "html",
+        "htmlText": "=<h1>Top Hacker News Stories</h1>\n<ul>\n{% for story in $json.stories %}\n  <li>\n    <a href=\"{{ story.url }}\">{{ story.title }}</a>\n    <p>Points: {{ story.score }} | Comments: {{ story.descendants }}</p>\n  </li>\n{% endfor %}\n</ul>"
+      },
+      "id": "2ed874a9-5bcf-4cc9-9b52-ea503a562892",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [2100, 600]
+    }
+  ],
+  "connections": {
+    "Schedule": {
+      "main": [
+        [
+          {
+            "node": "Get Top Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Top Stories": {
+      "main": [
+        [
+          {
+            "node": "Process Story IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Story IDs": {
+      "main": [
+        [
+          {
+            "node": "Get Story Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Story Details": {
+      "main": [
+        [
+          {
+            "node": "Combine Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Stories": {
+      "main": [
+        [
+          {
+            "node": "Format Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Email Data": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

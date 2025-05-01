@@ -94,6 +94,50 @@ function check_container_version {
   fi
 }
 
+# Функция для корректного преобразования docker-compose.yml в podman-compose.yml
+function convert_to_podman_compose {
+    local input_file="$1"
+    local output_file="$2"
+
+    # Копируем исходный файл
+    cp "$input_file" "$output_file"
+
+    # Заменяем короткие имена образов на полные
+    sed -i 's|postgres:17-alpine|docker.io/library/postgres:17-alpine|g' "$output_file"
+    sed -i 's|redis:alpine|docker.io/library/redis:alpine|g' "$output_file"
+    sed -i 's|nginx:alpine|docker.io/library/nginx:alpine|g' "$output_file"
+    sed -i 's|semitechnologies/weaviate:1.30.1|docker.io/semitechnologies/weaviate:1.30.1|g' "$output_file"
+    sed -i 's|n8nio/n8n:1.89.2|docker.io/n8nio/n8n:1.89.2|g' "$output_file"
+
+    # Временный файл для обработки
+    local temp_file="${output_file}.tmp"
+
+    # Обрабатываем файл построчно для корректного добавления :Z только для томов
+    awk 'BEGIN { volumes_section = 0 }
+    {
+        # Проверяем, содержит ли строка определение секции volumes
+        if ($0 ~ /volumes:/ && volumes_section == 0) {
+            volumes_section = 1;
+        }
+
+        # Если мы вне секции volumes и строка начинается с пробелов, за которыми следует не "-"
+        if (volumes_section == 1 && $0 ~ /^[[:space:]]+[^-]/) {
+            volumes_section = 0;
+        }
+
+        # Добавляем :Z только к определениям томов
+        if (volumes_section == 1 && $0 ~ /[[:space:]]+- .*:.*/ && $0 !~ /:Z$/) {
+            print $0 ":Z";
+        } else {
+            print $0;
+        }
+    }' "$output_file" > "$temp_file"
+
+    mv "$temp_file" "$output_file"
+
+    log "Файл $output_file успешно создан с корректным добавлением :Z для томов"
+}
+
 # Проверка наличия необходимых зависимостей
 check_dependency "$CONTAINER_CMD"
 check_dependency "$COMPOSE_CMD"
@@ -239,20 +283,10 @@ EOF
             fi
         fi
 
-        # Сначала создаем копию
-        cp "$SCRIPT_DIR/docker-compose.yml" "$SCRIPT_DIR/$COMPOSE_FILE"
+        # Используем нашу новую функцию для корректного преобразования файла
+        convert_to_podman_compose "$SCRIPT_DIR/docker-compose.yml" "$SCRIPT_DIR/$COMPOSE_FILE"
 
-        # Добавляем опцию :Z к томам для SELinux (если ее еще нет)
-        sed -i 's/\(- .*\):\(.*\)\(:\?Z\)\?$/\1:\2:Z/g' "$SCRIPT_DIR/$COMPOSE_FILE"
-
-        # Заменяем короткие имена образов на полные
-        sed -i 's|postgres:17-alpine|docker.io/library/postgres:17-alpine|g' "$SCRIPT_DIR/$COMPOSE_FILE"
-        sed -i 's|redis:alpine|docker.io/library/redis:alpine|g' "$SCRIPT_DIR/$COMPOSE_FILE"
-        sed -i 's|nginx:alpine|docker.io/library/nginx:alpine|g' "$SCRIPT_DIR/$COMPOSE_FILE"
-        sed -i 's|semitechnologies/weaviate:1.30.1|docker.io/semitechnologies/weaviate:1.30.1|g' "$SCRIPT_DIR/$COMPOSE_FILE"
-        sed -i 's|n8nio/n8n:1.89.2|docker.io/n8nio/n8n:1.89.2|g' "$SCRIPT_DIR/$COMPOSE_FILE"
-
-        # Нам также нужно обновить Dockerfile.n8n для использования полного имени базового образа
+        # Обновляем Dockerfile.n8n для использования полного имени базового образа
         if [ -f "$SCRIPT_DIR/Dockerfile.n8n" ]; then
             cp "$SCRIPT_DIR/Dockerfile.n8n" "$SCRIPT_DIR/Dockerfile.n8n.original"
             sed -i 's|FROM n8nio/n8n:1.89.2|FROM docker.io/n8nio/n8n:1.89.2|g' "$SCRIPT_DIR/Dockerfile.n8n"
@@ -263,7 +297,7 @@ EOF
         log "Ошибка: файл $COMPOSE_FILE не найден"
         exit 1
     fi
-fi
+
 
 # Создание самоподписанных SSL-сертификатов, если их нет
 if [ ! -f "$SCRIPT_DIR/nginx/certs/server.crt" ]; then

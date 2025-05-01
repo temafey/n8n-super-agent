@@ -1,0 +1,145 @@
+{
+  "name": "Instagram Reels Workflow",
+  "meta": {
+    "instanceId": "instagram-reels-workflow-instance",
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c0236456-40be-4f8f-a730-e56cb62b7b5c",
+      "name": "Start Competitor Analysis",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.instagram.com/v1/competitors/reels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.instagramApi.apiKey }}"
+            }
+          ]
+        },
+        "jsonParameters": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "competitors",
+              "value": "={{ $json.competitorAccounts }}"
+            },
+            {
+              "name": "limit",
+              "value": 50
+            },
+            {
+              "name": "timeframe",
+              "value": "={{ $json.timeframe || '7d' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cc106fa0-6630-4c84-aea4-a4c7a3c149e9",
+      "name": "Fetch Competitor Reels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Sort reels by engagement rate\nreturn items.map(item => {\n  const reels = item.json.data || [];\n  \n  // Calculate engagement rate and sort\n  const sortedReels = reels\n    .map(reel => ({\n      ...reel,\n      engagementRate: (reel.likes + reel.comments) / reel.views * 100\n    }))\n    .sort((a, b) => b.engagementRate - a.engagementRate);\n  \n  // Get top trending themes\n  const themes = {};\n  sortedReels.forEach(reel => {\n    if (reel.hashtags) {\n      reel.hashtags.forEach(tag => {\n        themes[tag] = (themes[tag] || 0) + 1;\n      });\n    }\n  });\n  \n  const trendingThemes = Object.entries(themes)\n    .sort((a, b) => b[1] - a[1])\n    .slice(0, 10)\n    .map(([theme]) => theme);\n  \n  return {\n    json: {\n      trendingReels: sortedReels.slice(0, 20),\n      trendingThemes: trendingThemes\n    }\n  };\n});"
+      },
+      "id": "d93b4429-2200-4a84-8505-16266fedfccd",
+      "name": "Analyze Trending Content",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1220, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.openaiApi.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4"
+            },
+            {
+              "name": "messages",
+              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are a professional Instagram content creator. Create engaging scripts for Reels based on trending themes.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Create 3 script ideas for Instagram Reels based on these trending themes: {{ $json.trendingThemes.join(', ') }}. Format each script with title, description, script text, and recommended hashtags.\"\n  }\n]"
+            },
+            {
+              "name": "temperature",
+              "value": 0.7
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26f43f2c-1422-40de-9f40-dd2d80926b1c",
+      "name": "Generate Reel Scripts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1440, 600]
+    }
+  ],
+  "connections": {
+    "Start Competitor Analysis": {
+      "main": [
+        [
+          {
+            "node": "Fetch Competitor Reels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Competitor Reels": {
+      "main": [
+        [
+          {
+            "node": "Analyze Trending Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Trending Content": {
+      "main": [
+        [
+          {
+            "node": "Generate Reel Scripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

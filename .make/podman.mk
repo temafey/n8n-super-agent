@@ -11,7 +11,7 @@ POSTGRES_CONTAINER = $$(podman ps -qf "name=n8n-super-agent_postgres")
 setup:
 	@echo "${GREEN}Инициализация проекта n8n-супер-агент с Podman...${NC}"
 	@chmod +x *.sh
-	@./setup.sh
+	@./setup.sh -e podman
 
 # Запуск контейнеров
 start:
@@ -25,11 +25,44 @@ stop:
 	@$(COMPOSE_CMD) stop
 	@echo "${GREEN}Контейнеры остановлены${NC}"
 
+
 # Перезапуск контейнеров
 restart:
 	@echo "${GREEN}Перезапуск контейнеров...${NC}"
 	@$(COMPOSE_CMD) restart
 	@echo "${GREEN}Контейнеры перезапущены${NC}"
+
+# Сборка образов
+build:
+	@echo "${GREEN}Сборка образов контейнеров с Podman...${NC}"
+	@$(COMPOSE_CMD) build
+	@echo "${GREEN}Образы собраны. Используйте 'make start' для запуска контейнеров.${NC}"
+
+# Сборка и запуск
+up:
+	@echo "${GREEN}Сборка и запуск контейнеров с Podman...${NC}"
+	@$(COMPOSE_CMD) up -d --build
+	@echo "${GREEN}Контейнеры собраны и запущены. n8n доступен по адресу: https://localhost${NC}"
+
+# Пересборка конкретного сервиса
+rebuild-service:
+	@read -p "Введите имя сервиса для пересборки: " service; \
+	echo "${GREEN}Пересборка сервиса $$service с Podman...${NC}"; \
+	$(COMPOSE_CMD) build --no-cache $$service; \
+	echo "${GREEN}Сервис $$service пересобран. Выполните 'make ENGINE=podman restart' для применения изменений.${NC}"
+
+# Обновление зависимостей и пересборка всех образов
+rebuild-all:
+	@echo "${GREEN}Полная пересборка всех образов с Podman (с отключенным кешем)...${NC}"
+	@$(COMPOSE_CMD) build --no-cache
+	@echo "${GREEN}Все образы пересобраны. Выполните 'make ENGINE=podman restart' для применения изменений.${NC}"
+
+# Обновление базовых образов и пересборка
+pull-build:
+	@echo "${GREEN}Обновление базовых образов и пересборка с Podman...${NC}"
+	@$(COMPOSE_CMD) pull
+	@$(COMPOSE_CMD) build
+	@echo "${GREEN}Образы обновлены и пересобраны. Выполните 'make ENGINE=podman restart' для применения изменений.${NC}"
 
 # Проверка статуса системы
 status:

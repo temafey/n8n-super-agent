@@ -1,0 +1,238 @@
+{
+  "name": "TikTok Workflow",
+  "meta": {
+    "instanceId": "tiktok-workflow-instance",
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c0236456-40be-4f8f-a730-e56cb62b7b5c",
+      "name": "Start TikTok Analysis",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.tiktokapi.com/profiles/similar",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "{{ $credentials.tiktokApi.apiKey }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{ $json.targetProfile }}"
+            },
+            {
+              "name": "limit",
+              "value": "={{ $json.limit || 10 }}"
+            },
+            {
+              "name": "min_followers",
+              "value": "={{ $json.minFollowers || 10000 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cc106fa0-6630-4c84-aea4-a4c7a3c149e9",
+      "name": "Find Similar Profiles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 600]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "1cddc984-7fca-45e0-83b8-0c502cb4c78c",
+      "name": "Process Each Profile",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1220, 600]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.tiktokapi.com/profiles/{{ $json.username }}/content",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "{{ $credentials.tiktokApi.apiKey }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": 20
+            },
+            {
+              "name": "sort",
+              "value": "popular"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d93b4429-2200-4a84-8505-16266fedfccd",
+      "name": "Get Profile Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1440, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process profile content\nreturn items.map(item => {\n  const profile = item.json;\n  const content = profile.content || [];\n  \n  // Calculate metrics\n  const totalLikes = content.reduce((sum, video) => sum + video.likes, 0);\n  const totalComments = content.reduce((sum, video) => sum + video.comments, 0);\n  const totalShares = content.reduce((sum, video) => sum + video.shares, 0);\n  const avgEngagement = content.length > 0 ? \n    (totalLikes + totalComments + totalShares) / content.length : 0;\n  \n  // Extract hashtags\n  const hashtags = {};\n  content.forEach(video => {\n    if (video.hashtags) {\n      video.hashtags.forEach(tag => {\n        hashtags[tag] = (hashtags[tag] || 0) + 1;\n      });\n    }\n  });\n  \n  // Get top hashtags\n  const topHashtags = Object.entries(hashtags)\n    .sort((a, b) => b[1] - a[1])\n    .slice(0, 10)\n    .map(([tag]) => tag);\n  \n  // Extract trends and patterns\n  const contentTypes = {};\n  content.forEach(video => {\n    if (video.contentType) {\n      contentTypes[video.contentType] = (contentTypes[video.contentType] || 0) + 1;\n    }\n  });\n  \n  return {\n    json: {\n      username: profile.username,\n      metrics: {\n        totalLikes,\n        totalComments,\n        totalShares,\n        avgEngagement,\n        videosAnalyzed: content.length\n      },\n      topHashtags,\n      contentTypes,\n      topVideos: content.slice(0, 5).map(video => ({\n        id: video.id,\n        description: video.description,\n        likes: video.likes,\n        comments: video.comments,\n        shares: video.shares\n      }))\n    }\n  };\n});"
+      },
+      "id": "2ed874a9-5bcf-4cc9-9b52-ea503a562892",
+      "name": "Analyze Content",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1660, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.openaiApi.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4"
+            },
+            {
+              "name": "messages",
+              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are a TikTok content strategy expert. Create engaging scripts based on successful content patterns.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Based on this TikTok profile analysis:\\n{{ JSON.stringify($json, null, 2) }}\\n\\nCreate 3 script ideas for new TikTok videos that would perform well for this niche. Include a title, brief description, script text, recommended hashtags, and any specific visual elements to include.\"\n  }\n]"
+            },
+            {
+              "name": "temperature",
+              "value": 0.7
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26f43f2c-1422-40de-9f40-dd2d80926b1c",
+      "name": "Generate TikTok Scripts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1880, 600]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": {
+          "values": []
+        },
+        "options": {}
+      },
+      "id": "0fa1fbf6-fe77-4044-a445-c49a1db37dec",
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [2100, 600]
+    }
+  ],
+  "connections": {
+    "Start TikTok Analysis": {
+      "main": [
+        [
+          {
+            "node": "Find Similar Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Similar Profiles": {
+      "main": [
+        [
+          {
+            "node": "Process Each Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Each Profile": {
+      "main": [
+        [
+          {
+            "node": "Get Profile Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Profile Content": {
+      "main": [
+        [
+          {
+            "node": "Analyze Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Content": {
+      "main": [
+        [
+          {
+            "node": "Generate TikTok Scripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate TikTok Scripts": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
