@@ -1,9 +1,5 @@
 {
   "name": "Hacker News Workflow",
-  "meta": {
-    "instanceId": "hacker-news-workflow-instance",
-    "templateCredsSetupCompleted": true
-  },
   "nodes": [
     {
       "parameters": {
@@ -20,7 +16,10 @@
       "name": "Schedule",
       "type": "n8n-nodes-base.schedule",
       "typeVersion": 1,
-      "position": [780, 600]
+      "position": [
+        780,
+        600
+      ]
     },
     {
       "parameters": {
@@ -31,7 +30,10 @@
       "name": "Get Top Stories",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1000, 600]
+      "position": [
+        1000,
+        600
+      ]
     },
     {
       "parameters": {
@@ -41,7 +43,10 @@
       "name": "Process Story IDs",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1220, 600]
+      "position": [
+        1220,
+        600
+      ]
     },
     {
       "parameters": {
@@ -52,7 +57,10 @@
       "name": "Get Story Details",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1440, 600]
+      "position": [
+        1440,
+        600
+      ]
     },
     {
       "parameters": {
@@ -66,7 +74,10 @@
       "name": "Combine Stories",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 2.1,
-      "position": [1660, 600]
+      "position": [
+        1660,
+        600
+      ]
     },
     {
       "parameters": {
@@ -76,7 +87,10 @@
       "name": "Format Email Data",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1880, 600]
+      "position": [
+        1880,
+        600
+      ]
     },
     {
       "parameters": {
@@ -89,7 +103,10 @@
       "name": "Send Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 1,
-      "position": [2100, 600]
+      "position": [
+        2100,
+        600
+      ]
     }
   ],
   "connections": {
@@ -159,5 +176,11 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
   }
 }

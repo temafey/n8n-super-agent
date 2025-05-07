@@ -35,7 +35,7 @@ restart:
 # Сборка образов
 build:
 	@echo "${GREEN}Сборка образов контейнеров с Podman...${NC}"
-	@$(COMPOSE_CMD) build
+	sudo @$(COMPOSE_CMD) build
 	@echo "${GREEN}Образы собраны. Используйте 'make start' для запуска контейнеров.${NC}"
 
 # Сборка и запуск

@@ -1,9 +1,5 @@
 {
   "name": "Копирование Новостей Workflow",
-  "meta": {
-    "instanceId": "copy-news-workflow-instance",
-    "templateCredsSetupCompleted": true
-  },
   "nodes": [
     {
       "parameters": {},
@@ -11,7 +7,10 @@
       "name": "Start News Generator",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [780, 600]
+      "position": [
+        780,
+        600
+      ]
     },
     {
       "parameters": {
@@ -21,7 +20,10 @@
       "name": "Define Audience",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1000, 600]
+      "position": [
+        1000,
+        600
+      ]
     },
     {
       "parameters": {
@@ -60,7 +62,10 @@
       "name": "Fetch News",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1220, 600]
+      "position": [
+        1220,
+        600
+      ]
     },
     {
       "parameters": {
@@ -70,7 +75,10 @@
       "name": "Filter Relevant News",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1440, 600]
+      "position": [
+        1440,
+        600
+      ]
     },
     {
       "parameters": {
@@ -114,7 +122,10 @@
       "name": "Generate Telegram Posts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1660, 600]
+      "position": [
+        1660,
+        600
+      ]
     },
     {
       "parameters": {
@@ -124,7 +135,10 @@
       "name": "Format Posts",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1880, 600]
+      "position": [
+        1880,
+        600
+      ]
     },
     {
       "parameters": {
@@ -135,7 +149,10 @@
       "name": "Send to Telegram",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [2100, 600]
+      "position": [
+        2100,
+        600
+      ]
     }
   ],
   "connections": {
@@ -205,5 +222,11 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
   }
 }

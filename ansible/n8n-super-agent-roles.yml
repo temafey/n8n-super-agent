@@ -1,0 +1,82 @@
+---
+# n8n-super-agent: Ansible playbook для автоматизации развертывания (с использованием ролей)
+# Описание: Устанавливает и настраивает проект n8n-super-agent на Ubuntu сервере
+
+- name: Настройка сервера для n8n-super-agent
+  hosts: n8n_servers
+  become: yes
+  vars_files:
+    - group_vars/n8n_servers/vars.yml
+
+  pre_tasks:
+    - name: Обновление кэша apt
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      tags: always
+
+    - name: Обновление пакетов Ubuntu
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+      register: apt_upgrade
+      retries: 3
+      delay: 5
+      until: apt_upgrade is success
+      tags: always
+
+    - name: Установка базовых пакетов
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - git
+          - make
+          - jq
+          - htop
+          - python3-pip
+          - unzip
+          - acl
+        state: present
+      tags: always
+
+    - name: Установка временной зоны
+      community.general.timezone:
+        name: "{{ timezone }}"
+      tags: system
+
+    - name: Запуск и включение chrony
+      service:
+        name: chrony
+        state: started
+        enabled: yes
+      tags: system
+      
+    - name: Настройка swap
+      include_tasks: "{{ playbook_dir }}/tasks/swap.yml"
+      tags: system
+
+  roles:
+    - role: docker
+      tags: docker
+      
+    - role: security
+      tags: security
+      
+    - role: n8n-setup
+      tags: n8n-setup
+
+  post_tasks:
+    - name: Отображение информации о развернутой системе
+      debug:
+        msg:
+          - "n8n-super-agent успешно развернут на {{ inventory_hostname }}"
+          - "Доступ к n8n: https://{{ inventory_hostname }}"
+          - "Учетные данные: {{ n8n_user }} / [заданный пароль]"
+          - "Для запуска ручного резервного копирования: cd {{ project_dir }} && make backup"
+          - "Для проверки системы: cd {{ project_dir }} && make check"
+      tags: always

@@ -1,0 +1,155 @@
+---
+# Роль n8n-setup - основные задачи
+
+- name: Создание директории проекта
+  file:
+    path: "{{ project_dir }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+  tags: n8n-setup
+
+- name: Клонирование репозитория проекта
+  git:
+    repo: "{{ git_repo }}"
+    dest: "{{ project_dir }}"
+    version: "{{ git_branch }}"
+    force: yes
+  become_user: "{{ ansible_user }}"
+  tags: n8n-setup
+
+- name: Создание необходимых директорий
+  file:
+    path: "{{ project_dir }}/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "logs/n8n"
+    - "logs/zep"
+    - "logs/postgres"
+    - "logs/postgres-zep"
+    - "logs/nginx"
+    - "logs/redis"
+    - "logs/weaviate"
+    - "nginx/certs"
+    - "backups"
+  tags: n8n-setup
+
+- name: Создание .env файла
+  template:
+    src: env.j2
+    dest: "{{ project_dir }}/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  tags: n8n-setup
+
+- name: Создание SSL сертификатов, если они еще не существуют
+  shell: |
+    if [ ! -f {{ project_dir }}/nginx/certs/server.crt ]; then
+      openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout {{ project_dir }}/nginx/certs/server.key \
+        -out {{ project_dir }}/nginx/certs/server.crt \
+        -subj "/C=RU/ST=State/L=City/O=Organization/CN=localhost"
+    fi
+  args:
+    executable: /bin/bash
+    creates: "{{ project_dir }}/nginx/certs/server.crt"
+  tags: n8n-setup
+
+- name: Установка прав выполнения для скриптов
+  file:
+    path: "{{ project_dir }}/{{ item }}"
+    mode: '0755'
+  loop:
+    - "setup.sh"
+    - "rotate-logs.sh"
+    - "check-system.sh"
+    - "fix-issues.sh"
+    - "import-templates.sh"
+    - "make-scripts-executable.sh"
+  tags: n8n-setup
+
+- name: Проверка уже установленных контейнеров
+  command: docker ps -a --format '{{.Names}}' | grep -q n8n
+  register: docker_check
+  failed_when: false
+  changed_when: false
+  tags: n8n-setup
+
+- name: Проверка наличия файла .n8n_api_key
+  stat:
+    path: "{{ project_dir }}/.n8n_api_key"
+  register: api_key_file
+  tags: n8n-setup
+
+- name: Запуск проекта через make setup
+  command: make setup
+  args:
+    chdir: "{{ project_dir }}"
+  become_user: "{{ ansible_user }}"
+  register: setup_result
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+  retries: 2
+  delay: 30
+  until: setup_result is success
+  when: docker_check.rc != 0 or not api_key_file.stat.exists
+  tags: n8n-setup
+
+- name: Проверка запущенных контейнеров
+  command: docker ps
+  register: docker_status
+  changed_when: false
+  tags: n8n-setup
+
+- name: Вывод информации о запущенных контейнерах
+  debug:
+    var: docker_status.stdout_lines
+  tags: n8n-setup
+
+- name: Проверка работоспособности системы
+  command: "{{ project_dir }}/check-system.sh"
+  become_user: "{{ ansible_user }}"
+  register: check_result
+  ignore_errors: yes
+  tags: n8n-setup
+
+- name: Вывод результатов проверки системы
+  debug:
+    var: check_result.stdout_lines
+  when: check_result is not failed
+  tags: n8n-setup
+
+- name: Настройка ротации логов
+  cron:
+    name: "Ротация логов n8n-super-agent"
+    user: "{{ ansible_user }}"
+    job: "cd {{ project_dir }} && ./rotate-logs.sh > /dev/null 2>&1"
+    hour: "2"
+    minute: "0"
+  when: enable_backups
+  tags: n8n-setup, maintenance
+
+- name: Настройка резервного копирования
+  cron:
+    name: "Резервное копирование n8n-super-agent"
+    user: "{{ ansible_user }}"
+    job: "cd {{ project_dir }} && make backup > /dev/null 2>&1"
+    cron_file: n8n-super-agent-backup
+    hour: "3"
+    minute: "0"
+  when: enable_backups
+  tags: n8n-setup, maintenance
+
+- name: Настройка очистки старых резервных копий
+  cron:
+    name: "Очистка старых резервных копий n8n-super-agent"
+    user: "{{ ansible_user }}"
+    job: "find {{ backup_dir }} -type f -name '*.sql' -mtime +{{ backup_retention_days }} -delete; find {{ backup_dir }} -type f -name '*.tar.gz' -mtime +{{ backup_retention_days }} -delete"
+    cron_file: n8n-super-agent-backup-cleanup
+    hour: "4"
+    minute: "0"
+  when: enable_backups
+  tags: n8n-setup, maintenance

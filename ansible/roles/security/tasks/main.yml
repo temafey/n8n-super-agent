@@ -1,0 +1,86 @@
+---
+# Роль Security - основные задачи
+
+- name: Обновление пакетов безопасности
+  apt:
+    name:
+      - fail2ban
+      - ufw
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+  tags: security
+
+- name: Настройка автоматических обновлений безопасности
+  template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: '0644'
+  tags: security
+
+- name: Настройка ufw для разрешения ssh
+  ufw:
+    rule: allow
+    port: "{{ ssh_port }}"
+    proto: tcp
+  when: enable_firewall
+  notify: reload ufw
+  tags: security
+
+- name: Настройка ufw для разрешения HTTP
+  ufw:
+    rule: allow
+    port: 80
+    proto: tcp
+  when: enable_firewall
+  notify: reload ufw
+  tags: security
+
+- name: Настройка ufw для разрешения HTTPS
+  ufw:
+    rule: allow
+    port: 443
+    proto: tcp
+  when: enable_firewall
+  notify: reload ufw
+  tags: security
+
+- name: Включение ufw
+  ufw:
+    state: enabled
+    policy: deny
+  when: enable_firewall
+  tags: security
+
+- name: Настройка fail2ban
+  copy:
+    dest: /etc/fail2ban/jail.local
+    content: |
+      [DEFAULT]
+      bantime = 3600
+      findtime = 600
+      maxretry = 5
+      
+      [sshd]
+      enabled = true
+  when: enable_fail2ban
+  notify: restart fail2ban
+  tags: security
+
+- name: Настройка более безопасных параметров SSH
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+    - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+    - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
+    - { regexp: '^#?MaxAuthTries', line: 'MaxAuthTries 3' }
+    - { regexp: '^#?AllowTcpForwarding', line: 'AllowTcpForwarding no' }
+    - { regexp: '^#?AllowAgentForwarding', line: 'AllowAgentForwarding no' }
+  notify: restart ssh
+  tags: security

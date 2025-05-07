@@ -1,9 +1,5 @@
 {
   "name": "Веб-поиск Workflow",
-  "meta": {
-    "instanceId": "web-search-workflow-instance",
-    "templateCredsSetupCompleted": true
-  },
   "nodes": [
     {
       "parameters": {},
@@ -11,7 +7,10 @@
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [780, 600]
+      "position": [
+        780,
+        600
+      ]
     },
     {
       "parameters": {
@@ -23,7 +22,10 @@
       "name": "HTTP Request",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1000, 600]
+      "position": [
+        1000,
+        600
+      ]
     },
     {
       "parameters": {
@@ -33,7 +35,10 @@
       "name": "Process Results",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1220, 600]
+      "position": [
+        1220,
+        600
+      ]
     },
     {
       "parameters": {
@@ -45,7 +50,10 @@
       "name": "Return Results",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1440, 600]
+      "position": [
+        1440,
+        600
+      ]
     }
   ],
   "connections": {
@@ -82,5 +90,11 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
   }
 }

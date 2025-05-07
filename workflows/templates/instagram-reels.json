@@ -1,9 +1,5 @@
 {
   "name": "Instagram Reels Workflow",
-  "meta": {
-    "instanceId": "instagram-reels-workflow-instance",
-    "templateCredsSetupCompleted": true
-  },
   "nodes": [
     {
       "parameters": {},
@@ -11,7 +7,10 @@
       "name": "Start Competitor Analysis",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [780, 600]
+      "position": [
+        780,
+        600
+      ]
     },
     {
       "parameters": {
@@ -50,7 +49,10 @@
       "name": "Fetch Competitor Reels",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1000, 600]
+      "position": [
+        1000,
+        600
+      ]
     },
     {
       "parameters": {
@@ -60,7 +62,10 @@
       "name": "Analyze Trending Content",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1220, 600]
+      "position": [
+        1220,
+        600
+      ]
     },
     {
       "parameters": {
@@ -104,7 +109,10 @@
       "name": "Generate Reel Scripts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1440, 600]
+      "position": [
+        1440,
+        600
+      ]
     }
   ],
   "connections": {
@@ -141,5 +149,11 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
   }
 }

@@ -1,9 +1,5 @@
 {
   "name": "HeyGen Workflow",
-  "meta": {
-    "instanceId": "heygen-workflow-instance",
-    "templateCredsSetupCompleted": true
-  },
   "nodes": [
     {
       "parameters": {},
@@ -11,7 +7,10 @@
       "name": "When clicking \"Generate Avatar\"",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [780, 600]
+      "position": [
+        780,
+        600
+      ]
     },
     {
       "parameters": {
@@ -51,7 +50,10 @@
       "name": "Create Avatar",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1000, 600]
+      "position": [
+        1000,
+        600
+      ]
     },
     {
       "parameters": {
@@ -74,7 +76,10 @@
       "name": "Wait for Processing",
       "type": "n8n-nodes-base.httpRequestWaitForCompletion",
       "typeVersion": 1,
-      "position": [1220, 600]
+      "position": [
+        1220,
+        600
+      ]
     },
     {
       "parameters": {
@@ -109,7 +114,10 @@
       "name": "Publish Content",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1440, 600]
+      "position": [
+        1440,
+        600
+      ]
     }
   ],
   "connections": {
@@ -146,5 +154,11 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
   }
 }

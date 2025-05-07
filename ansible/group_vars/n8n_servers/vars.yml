@@ -1,0 +1,26 @@
+# Основные настройки
+project_name: n8n-super-agent
+project_dir: /opt/n8n-super-agent
+git_repo: https://github.com/yourusername/n8n-super-agent.git
+git_branch: main
+
+# Учетные данные
+n8n_user: admin
+n8n_password: "{{ vault_n8n_password }}"
+n8n_encryption_key: "{{ vault_n8n_encryption_key }}"
+redis_password: "{{ vault_redis_password }}"
+openai_api_key: "{{ vault_openai_api_key }}"
+
+# Настройки сервера
+swap_size_mb: 4096
+timezone: Europe/Moscow
+enable_firewall: true
+enable_fail2ban: true
+ssh_port: 22
+ssh_service_name: ssh  # Имя сервиса SSH (ssh для Ubuntu/Debian, sshd для CentOS/RHEL)
+
+# Настройки резервного копирования
+backup_dir: /opt/backups/n8n-super-agent
+backup_retention_days: 7
+enable_backups: true
+backup_schedule: "0 3 * * *"  # Каждый день в 3:00

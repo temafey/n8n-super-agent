@@ -1,0 +1,344 @@
+---
+# n8n-super-agent: Ansible playbook для автоматизации развертывания
+# Описание: Устанавливает и настраивает проект n8n-super-agent на Ubuntu сервере
+
+- name: Настройка сервера для n8n-super-agent
+  hosts: n8n_servers  # Группа серверов (необходимо настроить в inventory)
+  become: yes  # Выполнение с правами суперпользователя
+  vars_files:
+    - group_vars/n8n_servers/vars.yml
+
+  tasks:
+    ### 1. Обновление системы и установка зависимостей ###
+    - name: Обновление кэша apt
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Обновление пакетов Ubuntu
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+      register: apt_upgrade
+      retries: 3
+      delay: 5
+      until: apt_upgrade is success
+
+    - name: Установка базовых пакетов
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - git
+          - make
+          - jq
+          - htop
+          - fail2ban
+          - ufw
+          - chrony
+          - python3-pip
+          - unzip
+          - acl
+        state: present
+
+    ### 2. Настройка времени ###
+    - name: Проверка наличия коллекции community.general
+      command: ansible-galaxy collection list community.general
+      register: collection_check
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      run_once: true
+      tags: system
+      
+    - name: Установка коллекции community.general
+      command: ansible-galaxy collection install community.general
+      when: collection_check.rc != 0
+      delegate_to: localhost
+      run_once: true
+      tags: system
+      
+    - name: Установка временной зоны
+      community.general.timezone:
+        name: "{{ timezone }}"
+      tags: system
+      ignore_errors: true
+      
+    - name: Альтернативная установка временной зоны (если модуль не работает)
+      command: timedatectl set-timezone {{ timezone }}
+      when: ansible_service_mgr == 'systemd'
+      failed_when: false
+      tags: system
+      
+    - name: Запуск и включение chrony
+      service:
+        name: chrony
+        state: started
+        enabled: yes
+
+    ### 3. Установка Docker ###
+    - name: Добавление ключа GPG Docker
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Добавление репозитория Docker
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Установка Docker и Docker Compose
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Включение и запуск службы Docker
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Установка docker-compose через pip
+      pip:
+        name: docker-compose
+        state: present
+
+    - name: Создание группы docker и добавление пользователя
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    ### 4. Настройка безопасности ###
+    - name: Настройка ufw для разрешения ssh
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+      when: enable_firewall
+
+    - name: Настройка ufw для разрешения HTTP
+      ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+      when: enable_firewall
+
+    - name: Настройка ufw для разрешения HTTPS
+      ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+      when: enable_firewall
+
+    - name: Включение ufw
+      ufw:
+        state: enabled
+        policy: deny
+      when: enable_firewall
+
+    - name: Настройка fail2ban
+      copy:
+        dest: /etc/fail2ban/jail.local
+        content: |
+          [DEFAULT]
+          bantime = 3600
+          findtime = 600
+          maxretry = 5
+          
+          [sshd]
+          enabled = true
+      when: enable_fail2ban
+
+    - name: Перезапуск fail2ban
+      service:
+        name: fail2ban
+        state: restarted
+        enabled: yes
+      when: enable_fail2ban
+
+    ### 5. Настройка swap ###
+    - name: Проверка наличия файла подкачки
+      stat:
+        path: /swapfile
+      register: swap_file
+
+    - name: Создание файла подкачки
+      command: "dd if=/dev/zero of=/swapfile bs=1M count={{ swap_size_mb }}"
+      when: not swap_file.stat.exists
+      
+    - name: Установка прав на файл подкачки
+      file:
+        path: /swapfile
+        owner: root
+        group: root
+        mode: '0600'
+      when: not swap_file.stat.exists
+
+    - name: Форматирование файла подкачки
+      command: mkswap /swapfile
+      when: not swap_file.stat.exists
+
+    - name: Включение файла подкачки
+      command: swapon /swapfile
+      when: not swap_file.stat.exists
+
+    - name: Добавление swap в fstab
+      lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+        state: present
+      when: not swap_file.stat.exists
+
+    - name: Настройка параметра swappiness
+      sysctl:
+        name: vm.swappiness
+        value: '10'
+        state: present
+
+    ### 6. Клонирование и настройка проекта ###
+    - name: Создание директории проекта
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Клонирование репозитория проекта
+      git:
+        repo: "{{ git_repo }}"
+        dest: "{{ project_dir }}"
+        version: "{{ git_branch }}"
+        force: yes
+      become_user: "{{ ansible_user }}"
+
+    - name: Создание необходимых директорий
+      file:
+        path: "{{ project_dir }}/{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "logs/n8n"
+        - "logs/zep"
+        - "logs/postgres"
+        - "logs/postgres-zep"
+        - "logs/nginx"
+        - "logs/redis"
+        - "logs/weaviate"
+        - "nginx/certs"
+        - "backups"
+
+    - name: Создание .env файла
+      template:
+        src: env.j2
+        dest: "{{ project_dir }}/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Создание SSL сертификатов, если они еще не существуют
+      shell: |
+        if [ ! -f {{ project_dir }}/nginx/certs/server.crt ]; then
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout {{ project_dir }}/nginx/certs/server.key \
+            -out {{ project_dir }}/nginx/certs/server.crt \
+            -subj "/C=RU/ST=State/L=City/O=Organization/CN=localhost"
+        fi
+      args:
+        executable: /bin/bash
+        creates: "{{ project_dir }}/nginx/certs/server.crt"
+
+    - name: Установка прав выполнения для скриптов
+      file:
+        path: "{{ project_dir }}/{{ item }}"
+        mode: '0755'
+      loop:
+        - "setup.sh"
+        - "rotate-logs.sh"
+        - "check-system.sh"
+        - "fix-issues.sh"
+        - "import-templates.sh"
+        - "make-scripts-executable.sh"
+
+    ### 7. Запуск проекта ###
+    - name: Запуск проекта через make setup
+      command: make setup
+      args:
+        chdir: "{{ project_dir }}"
+      become_user: "{{ ansible_user }}"
+      register: setup_result
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+      retries: 2
+      delay: 30
+      until: setup_result is success
+
+    - name: Проверка запущенных контейнеров
+      command: docker ps
+      register: docker_status
+      changed_when: false
+
+    - name: Вывод информации о запущенных контейнерах
+      debug:
+        var: docker_status.stdout_lines
+
+    - name: Проверка работоспособности системы
+      command: "{{ project_dir }}/check-system.sh"
+      become_user: "{{ ansible_user }}"
+      register: check_result
+      ignore_errors: yes
+
+    - name: Вывод результатов проверки системы
+      debug:
+        var: check_result.stdout_lines
+      when: check_result is not failed
+
+    ### 8. Настройка cron-задач для обслуживания ###
+    - name: Настройка ротации логов
+      cron:
+        name: "Ротация логов n8n-super-agent"
+        user: "{{ ansible_user }}"
+        job: "cd {{ project_dir }} && ./rotate-logs.sh > /dev/null 2>&1"
+        hour: "2"
+        minute: "0"
+      when: enable_backups
+
+    - name: Настройка резервного копирования
+      cron:
+        name: "Резервное копирование n8n-super-agent"
+        user: "{{ ansible_user }}"
+        job: "cd {{ project_dir }} && make backup > /dev/null 2>&1"
+        cron_file: n8n-super-agent-backup
+        hour: "3"
+        minute: "0"
+      when: enable_backups
+
+    - name: Настройка очистки старых резервных копий
+      cron:
+        name: "Очистка старых резервных копий n8n-super-agent"
+        user: "{{ ansible_user }}"
+        job: "find {{ backup_dir }} -type f -name '*.sql' -mtime +{{ backup_retention_days }} -delete; find {{ backup_dir }} -type f -name '*.tar.gz' -mtime +{{ backup_retention_days }} -delete"
+        cron_file: n8n-super-agent-backup-cleanup
+        hour: "4"
+        minute: "0"
+      when: enable_backups
+
+    ### 9. Финальные инструкции ###
+    - name: Отображение информации о развернутой системе
+      debug:
+        msg:
+          - "n8n-super-agent успешно развернут на {{ inventory_hostname }}"
+          - "Доступ к n8n: https://{{ inventory_hostname }}"
+          - "Учетные данные: {{ n8n_user }} / [заданный пароль]"
+          - "Для запуска ручного резервного копирования: cd {{ project_dir }} && make backup"
+          - "Для проверки системы: cd {{ project_dir }} && make check"

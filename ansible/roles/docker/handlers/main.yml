@@ -1,0 +1,12 @@
+---
+# Обработчики для роли docker
+
+- name: restart docker
+  service:
+    name: docker
+    state: restarted
+
+- name: reload docker
+  systemd:
+    name: docker
+    daemon_reload: yes

@@ -17,3 +17,5 @@
 *.tgz
 *.log
 .n8n_api_key
+
+node_modules

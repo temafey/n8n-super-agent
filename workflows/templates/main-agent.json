@@ -12,7 +12,10 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -31,7 +34,10 @@
       "name": "Подготовка запроса",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [450, 300],
+      "position": [
+        450,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -51,7 +57,10 @@
       "name": "Классификатор текста",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [650, 300],
+      "position": [
+        650,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -78,7 +87,10 @@
       "name": "Маршрутизация",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
-      "position": [850, 300],
+      "position": [
+        850,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -102,7 +114,10 @@
       "name": "Web Search",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1050, 200],
+      "position": [
+        1050,
+        200
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -126,7 +141,10 @@
       "name": "Hacker News",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1050, 400],
+      "position": [
+        1050,
+        400
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -162,7 +180,10 @@
       "name": "Подготовка ответа",
       "type": "n8n-nodes-base.set",
       "typeVersion": 1,
-      "position": [1250, 300],
+      "position": [
+        1250,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -181,7 +202,10 @@
       "name": "Логирование",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1450, 300],
+      "position": [
+        1450,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",

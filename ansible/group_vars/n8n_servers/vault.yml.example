@@ -1,0 +1,6 @@
+# Пример файла с секретными переменными - скопируйте в vault.yml и зашифруйте
+
+vault_n8n_password: 'admin_password'
+vault_n8n_encryption_key: 'your-long-random-encryption-key'
+vault_redis_password: 'redis_secure_password'
+vault_openai_api_key: 'your-openai-api-key'

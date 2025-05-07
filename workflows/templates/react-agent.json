@@ -12,7 +12,10 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -31,7 +34,10 @@
       "name": "Инициализация ReAct",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [450, 300],
+      "position": [
+        450,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -53,7 +59,10 @@
       "name": "Получение следующего шага",
       "type": "n8n-nodes-base.openAi",
       "typeVersion": 1,
-      "position": [650, 300],
+      "position": [
+        650,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -72,7 +81,10 @@
       "name": "Парсинг ответа модели",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [850, 300],
+      "position": [
+        850,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -98,7 +110,10 @@
       "name": "Завершено?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1050, 300],
+      "position": [
+        1050,
+        300
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -125,7 +140,10 @@
       "name": "Выбор инструмента",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
-      "position": [1250, 400],
+      "position": [
+        1250,
+        400
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -149,7 +167,10 @@
       "name": "Выполнение веб-поиска",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1450, 350],
+      "position": [
+        1450,
+        350
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -168,7 +189,10 @@
       "name": "Обработка результата",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1650, 400],
+      "position": [
+        1650,
+        400
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -188,7 +212,10 @@
       "name": "Пауза",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [1850, 400],
+      "position": [
+        1850,
+        400
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",
@@ -228,7 +255,10 @@
       "name": "Подготовка ответа",
       "type": "n8n-nodes-base.set",
       "typeVersion": 1,
-      "position": [1250, 200],
+      "position": [
+        1250,
+        200
+      ],
       "disabled": false,
       "notesInFlow": false,
       "notes": "",

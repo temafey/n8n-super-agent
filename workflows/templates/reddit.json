@@ -1,9 +1,5 @@
 {
   "name": "Reddit Workflow",
-  "meta": {
-    "instanceId": "reddit-workflow-instance",
-    "templateCredsSetupCompleted": true
-  },
   "nodes": [
     {
       "parameters": {},
@@ -11,7 +7,10 @@
       "name": "Start Reddit Monitor",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [780, 600]
+      "position": [
+        780,
+        600
+      ]
     },
     {
       "parameters": {
@@ -35,7 +34,10 @@
       "name": "Get Top Posts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1000, 600]
+      "position": [
+        1000,
+        600
+      ]
     },
     {
       "parameters": {
@@ -45,7 +47,10 @@
       "name": "Process Posts",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1220, 600]
+      "position": [
+        1220,
+        600
+      ]
     },
     {
       "parameters": {
@@ -73,7 +78,10 @@
       "name": "Check Posts Found",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1440, 600]
+      "position": [
+        1440,
+        600
+      ]
     },
     {
       "parameters": {
@@ -117,7 +125,10 @@
       "name": "Analyze Posts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1660, 500]
+      "position": [
+        1660,
+        500
+      ]
     },
     {
       "parameters": {
@@ -129,7 +140,10 @@
       "name": "Return Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1660, 700]
+      "position": [
+        1660,
+        700
+      ]
     }
   ],
   "connections": {
@@ -184,5 +198,11 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
   }
 }

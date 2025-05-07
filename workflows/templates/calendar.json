@@ -1,9 +1,5 @@
 {
   "name": "Календарь Workflow",
-  "meta": {
-    "instanceId": "calendar-workflow-instance",
-    "templateCredsSetupCompleted": true
-  },
   "nodes": [
     {
       "parameters": {
@@ -16,7 +12,10 @@
       "name": "Calendar Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [780, 600]
+      "position": [
+        780,
+        600
+      ]
     },
     {
       "parameters": {
@@ -26,7 +25,10 @@
       "name": "Parse Request",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1000, 600]
+      "position": [
+        1000,
+        600
+      ]
     },
     {
       "parameters": {
@@ -54,7 +56,10 @@
       "name": "Action Router",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1220, 600]
+      "position": [
+        1220,
+        600
+      ]
     },
     {
       "parameters": {
@@ -74,7 +79,10 @@
       "name": "Create Event",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 1,
-      "position": [1440, 400]
+      "position": [
+        1440,
+        400
+      ]
     },
     {
       "parameters": {
@@ -102,7 +110,10 @@
       "name": "Check Update Action",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1440, 600]
+      "position": [
+        1440,
+        600
+      ]
     },
     {
       "parameters": {
@@ -123,7 +134,10 @@
       "name": "Update Event",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 1,
-      "position": [1660, 600]
+      "position": [
+        1660,
+        600
+      ]
     },
     {
       "parameters": {
@@ -151,7 +165,10 @@
       "name": "Check Delete Action",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1440, 800]
+      "position": [
+        1440,
+        800
+      ]
     },
     {
       "parameters": {
@@ -165,7 +182,10 @@
       "name": "Delete Event",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 1,
-      "position": [1660, 800]
+      "position": [
+        1660,
+        800
+      ]
     },
     {
       "parameters": {
@@ -181,7 +201,10 @@
       "name": "Get Events",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 1,
-      "position": [1660, 1000]
+      "position": [
+        1660,
+        1000
+      ]
     },
     {
       "parameters": {
@@ -195,7 +218,10 @@
       "name": "Combine Results",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 2.1,
-      "position": [1880, 600]
+      "position": [
+        1880,
+        600
+      ]
     },
     {
       "parameters": {
@@ -207,7 +233,10 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [2100, 600]
+      "position": [
+        2100,
+        600
+      ]
     }
   ],
   "connections": {
@@ -342,5 +371,11 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
   }
 }
