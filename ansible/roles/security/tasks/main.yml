@@ -8,16 +8,44 @@
       - ufw
       - unattended-upgrades
       - apt-listchanges
+      - openssh-server
     state: present
   tags: security
 
-- name: Настройка автоматических обновлений безопасности
+- name: Настройка автоматических обновлений безопасности (20auto-upgrades)
   template:
     src: 20auto-upgrades.j2
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     owner: root
     group: root
     mode: '0644'
+  tags: security
+
+- name: Настройка автоматических обновлений безопасности (50unattended-upgrades)
+  template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    owner: root
+    group: root
+    mode: '0644'
+  tags: security
+
+# SSH Key Authentication
+- name: Создание директории .ssh
+  file:
+    path: "{{ ssh_user_home }}/.ssh"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0700'
+  tags: security
+
+- name: Копирование SSH публичного ключа
+  authorized_key:
+    user: "{{ ansible_user }}"
+    key: "{{ ssh_public_key }}"
+    state: present
+  when: ssh_public_key is defined
   tags: security
 
 - name: Настройка ufw для разрешения ssh
@@ -59,12 +87,28 @@
     dest: /etc/fail2ban/jail.local
     content: |
       [DEFAULT]
-      bantime = 3600
-      findtime = 600
-      maxretry = 5
+      bantime = {{ fail2ban_bantime | default('1h') }}
+      bantime.increment = true
+      bantime.factor = 1
+      bantime.formula = ban.Time * (1<<(ban.Count if ban.Count<20 else 20)) * banFactor
+      bantime.maxtime = {{ fail2ban_maxtime | default('24h') }}
+      findtime = {{ fail2ban_findtime | default('10m') }}
+      maxretry = {{ fail2ban_maxretry | default('3') }}
       
       [sshd]
       enabled = true
+      filter = sshd
+      port = {{ ssh_port }}
+      logpath = %(sshd_log)s
+      maxretry = {{ fail2ban_ssh_maxretry | default('3') }}
+      findtime = {{ fail2ban_ssh_findtime | default('5m') }}
+      bantime = {{ fail2ban_ssh_bantime | default('2h') }}
+      
+      [nginx-http-auth]
+      enabled = true
+      filter = nginx-http-auth
+      port = http,https
+      logpath = /var/log/nginx/error.log
   when: enable_fail2ban
   notify: restart fail2ban
   tags: security
@@ -82,5 +126,45 @@
     - { regexp: '^#?MaxAuthTries', line: 'MaxAuthTries 3' }
     - { regexp: '^#?AllowTcpForwarding', line: 'AllowTcpForwarding no' }
     - { regexp: '^#?AllowAgentForwarding', line: 'AllowAgentForwarding no' }
+    - { regexp: '^#?PermitEmptyPasswords', line: 'PermitEmptyPasswords no' }
+    - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
+    - { regexp: '^#?UsePAM', line: 'UsePAM yes' }
   notify: restart ssh
+  tags: security
+
+- name: Проверка наличия директории sshd_config.d
+  stat:
+    path: /etc/ssh/sshd_config.d
+  register: sshd_config_d
+  tags: security
+
+- name: Создание директории sshd_config.d, если она отсутствует
+  file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: not sshd_config_d.stat.exists
+  tags: security
+
+- name: Создание файла 00-disable-passwords.conf для Ubuntu 24.04+
+  template:
+    src: 00-disable-passwords.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-disable-passwords.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart ssh
+  tags: security
+
+- name: Проверка эффективной конфигурации SSHD
+  shell: sshd -T | grep -i passwordauthentication
+  register: sshd_effective_config
+  changed_when: false
+  tags: security
+
+- name: Вывод текущей конфигурации SSHD
+  debug:
+    var: sshd_effective_config.stdout
   tags: security

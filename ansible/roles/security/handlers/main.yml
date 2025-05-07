@@ -5,3 +5,18 @@
   service:
     name: "{{ ssh_service_name }}"
     state: restarted
+
+- name: restart fail2ban
+  service:
+    name: fail2ban
+    state: restarted
+
+- name: reload ufw
+  command: ufw reload
+  when: enable_firewall | bool
+
+- name: reload unattended-upgrades
+  service:
+    name: unattended-upgrades
+    state: restarted
+  ignore_errors: yes

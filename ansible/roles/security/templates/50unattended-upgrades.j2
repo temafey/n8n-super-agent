@@ -1,0 +1,56 @@
+// Автоматически обновлять пакеты из этих источников
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+    "${distro_id}:${distro_codename}-updates";
+//  "${distro_id}:${distro_codename}-proposed";
+//  "${distro_id}:${distro_codename}-backports";
+};
+
+// Список пакетов, которые не следует обновлять (регулярные выражения)
+Unattended-Upgrade::Package-Blacklist {
+//    "vim";
+//    "libc6";
+//    "libc6-dev";
+//    "libc6-i686";
+};
+
+// Это параметр по умолчанию - не затрагивать критически важные пакеты
+Unattended-Upgrade::DevRelease "false";
+
+// Разбить обновление на меньшие куски (помогает при ограниченной памяти)
+Unattended-Upgrade::MinimalSteps "true";
+
+// Установка обновлений требующих немедленной перезагрузки (например, ядро)
+Unattended-Upgrade::InstallOnShutdown "false";
+
+// Отправлять email с отчетом об обновлении
+Unattended-Upgrade::Mail "{{ unattended_upgrade_email | default('root') }}";
+
+// Отправлять только при ошибках
+Unattended-Upgrade::MailReport "{{ unattended_upgrade_mail_report | default('on-change') }}";
+
+// Автоматически удалять неиспользуемые ядра и пакеты
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+// Если true, автоматически перезагружать сервер, когда это необходимо
+Unattended-Upgrade::Automatic-Reboot "{{ unattended_upgrade_auto_reboot | default('false') }}";
+
+// Если true, отправлять email до перезагрузки
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+
+// Время для перезагрузки (если Automatic-Reboot = true)
+Unattended-Upgrade::Automatic-Reboot-Time "{{ unattended_upgrade_reboot_time | default('02:00') }}";
+
+// Настройка уровня логирования (0=отладка, 1=информация, 2=предупреждения, 3=ошибки)
+Unattended-Upgrade::Verbose "1";
+
+// Загружать все обновления в кэш при обнаружении
+Unattended-Upgrade::Download-Upgradeable-Packages "true";
+
+// Загружать обновления параллельно
+Acquire::Queue-Mode "host";
+Acquire::http::Dl-Limit "0";

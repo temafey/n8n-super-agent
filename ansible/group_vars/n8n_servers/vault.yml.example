@@ -1,6 +1,17 @@
 # Пример файла с секретными переменными - скопируйте в vault.yml и зашифруйте
 
+# Основные данные n8n
 vault_n8n_password: 'admin_password'
 vault_n8n_encryption_key: 'your-long-random-encryption-key'
 vault_redis_password: 'redis_secure_password'
 vault_openai_api_key: 'your-openai-api-key'
+
+# Cloudflare параметры
+vault_cloudflare_email: 'your.email@example.com'
+vault_cloudflare_api_key: 'your-cloudflare-global-api-key'
+vault_cloudflare_api_token: 'your-cloudflare-api-token'
+vault_cloudflare_zone_id: 'your-cloudflare-zone-id'
+
+# Hetzner Cloud параметры
+vault_hetzner_api_token: 'your-hetzner-cloud-api-token'
+vault_hetzner_network_id: 'your-hetzner-network-id'  # опционально

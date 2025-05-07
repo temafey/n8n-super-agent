@@ -1,0 +1,326 @@
+---
+# Задачи для роли Cloudflare
+
+- name: Проверка необходимых переменных
+  fail:
+    msg: "Переменная {{ item }} не определена"
+  when: item is not defined or item | length == 0
+  with_items:
+    - cloudflare_domain
+    - cloudflare_email
+  tags: cloudflare
+
+- name: Проверка наличия API ключа или токена
+  fail:
+    msg: "Необходимо указать cloudflare_api_key или cloudflare_api_token"
+  when: (cloudflare_api_key is not defined or cloudflare_api_key | length == 0) and
+        (cloudflare_api_token is not defined or cloudflare_api_token | length == 0)
+  tags: cloudflare
+
+- name: Установка зависимостей для Python
+  apt:
+    name:
+      - python3-pip
+      - python3-dev
+      - libffi-dev
+      - libssl-dev
+    state: present
+  tags: cloudflare
+
+- name: Установка Python-модулей для Cloudflare
+  pip:
+    name:
+      - cloudflare
+      - cryptography>=36.0.0
+    state: present
+  tags: cloudflare
+
+- name: Создание директории для Cloudflare сертификатов
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0750'
+  loop:
+    - "{{ project_dir }}/ssl/cloudflare"
+    - "{{ project_dir }}/ssl/private"
+  tags: cloudflare
+
+- name: Получение информации о зоне Cloudflare
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones?name={{ cloudflare_domain }}"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    status_code: 200
+    body_format: json
+  register: zone_info
+  when: cloudflare_zone_id is not defined or cloudflare_zone_id | length == 0
+  tags: cloudflare
+
+- name: Сохранение ID зоны из API ответа
+  set_fact:
+    cloudflare_zone_id: "{{ zone_info.json.result[0].id }}"
+  when: cloudflare_zone_id is not defined or cloudflare_zone_id | length == 0
+  tags: cloudflare
+
+- name: Создание или обновление A-записи для корневого домена
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    status_code: 200
+    body_format: json
+    query:
+      type: A
+      name: "{{ cloudflare_domain }}"
+  register: dns_records
+  tags: cloudflare
+
+- name: Обновление A-записи для корневого домена
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records/{{ item.id }}"
+    method: PUT
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      type: "A"
+      name: "{{ cloudflare_domain }}"
+      content: "{{ ansible_host }}"
+      ttl: 1
+      proxied: "{{ cloudflare_proxied }}"
+    body_format: json
+    status_code: 200
+  with_items: "{{ dns_records.json.result }}"
+  when: dns_records.json.result | length > 0
+  tags: cloudflare
+
+- name: Создание A-записи для корневого домена
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      type: "A"
+      name: "{{ cloudflare_domain }}"
+      content: "{{ ansible_host }}"
+      ttl: 1
+      proxied: "{{ cloudflare_proxied }}"
+    body_format: json
+    status_code: 200
+  when: dns_records.json.result | length == 0
+  tags: cloudflare
+
+- name: Создание или обновление CNAME-записи для www
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    status_code: 200
+    body_format: json
+    query:
+      type: CNAME
+      name: "www.{{ cloudflare_domain }}"
+  register: www_records
+  tags: cloudflare
+
+- name: Обновление CNAME-записи для www
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records/{{ item.id }}"
+    method: PUT
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      type: "CNAME"
+      name: "www.{{ cloudflare_domain }}"
+      content: "{{ cloudflare_domain }}"
+      ttl: 1
+      proxied: "{{ cloudflare_proxied }}"
+    body_format: json
+    status_code: 200
+  with_items: "{{ www_records.json.result }}"
+  when: www_records.json.result | length > 0
+  tags: cloudflare
+
+- name: Создание CNAME-записи для www
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      type: "CNAME"
+      name: "www.{{ cloudflare_domain }}"
+      content: "{{ cloudflare_domain }}"
+      ttl: 1
+      proxied: "{{ cloudflare_proxied }}"
+    body_format: json
+    status_code: 200
+  when: www_records.json.result | length == 0
+  tags: cloudflare
+
+- name: Установка режима SSL/TLS на Cloudflare
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/settings/ssl"
+    method: PATCH
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      value: "{{ cloudflare_ssl_mode }}"
+    body_format: json
+  tags: cloudflare
+
+- name: Создание Cloudflare Origin CA сертификата (если используется full_strict)
+  block:
+    - name: Генерация ключа и CSR
+      openssl_privatekey:
+        path: "{{ project_dir }}/ssl/private/origin-cert.key"
+        type: RSA
+        size: 2048
+        mode: '0600'
+      register: private_key
+      
+    - name: Создание CSR для Cloudflare Origin CA
+      openssl_csr:
+        path: "{{ project_dir }}/ssl/cloudflare/origin-cert.csr"
+        privatekey_path: "{{ project_dir }}/ssl/private/origin-cert.key"
+        common_name: "{{ cloudflare_domain }}"
+        subject_alt_name: "DNS:{{ cloudflare_domain }},DNS:*.{{ cloudflare_domain }}"
+      
+    - name: Чтение CSR
+      slurp:
+        src: "{{ project_dir }}/ssl/cloudflare/origin-cert.csr"
+      register: csr_content
+      
+    - name: Создание Origin сертификата через Cloudflare API
+      uri:
+        url: "https://api.cloudflare.com/client/v4/certificates"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+          Authorization: "Bearer {{ cloudflare_api_token }}"
+          {% else %}
+          X-Auth-Email: "{{ cloudflare_email }}"
+          X-Auth-Key: "{{ cloudflare_api_key }}"
+          {% endif %}
+        body:
+          hostnames:
+            - "{{ cloudflare_domain }}"
+            - "*.{{ cloudflare_domain }}"
+          requested_validity: "{{ cloudflare_origin_cert_days }}"
+          request_type: "origin-rsa"
+          csr: "{{ (csr_content.content | b64decode).split('\n') | join('\\n') }}"
+        body_format: json
+        status_code: [200, 201]
+      register: origin_cert_response
+      
+    - name: Сохранение сертификата
+      copy:
+        content: "{{ origin_cert_response.json.result.certificate }}"
+        dest: "{{ project_dir }}/ssl/cloudflare/origin-cert.pem"
+        mode: '0644'
+      
+    - name: Сохранение сертификата и ключа в файлы для Docker
+      copy:
+        content: "{{ item.content }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode }}"
+      with_items:
+        - { content: "{{ origin_cert_response.json.result.certificate }}", dest: "{{ project_dir }}/nginx/certs/server.crt", mode: '0644' }
+        - { content: "{{ lookup('file', '{{ project_dir }}/ssl/private/origin-cert.key') }}", dest: "{{ project_dir }}/nginx/certs/server.key", mode: '0600' }
+  when: cloudflare_ssl_mode == "full_strict"
+  tags: cloudflare
+
+# Базовые настройки WAF на Cloudflare (firewall rules)
+- name: Создание правила WAF для блокировки сканеров уязвимостей
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/firewall/rules"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      description: "Block vulnerability scanners"
+      action: "managed_challenge"
+      expression: "(http.user_agent contains \"nikto\") or (http.user_agent contains \"sqlmap\") or (http.user_agent contains \"masscan\") or (lower(http.user_agent) contains \"nmap\")"
+      paused: false
+    body_format: json
+    status_code: [200, 201]
+  tags: cloudflare
+
+- name: Создание правила WAF для вызова проверки (challenge) для пустых User-Agent
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/firewall/rules"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      description: "Challenge empty User-Agents"
+      action: "managed_challenge"
+      expression: "(http.user_agent eq \"\")"
+      paused: false
+    body_format: json
+    status_code: [200, 201]
+  tags: cloudflare

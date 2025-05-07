@@ -11,6 +11,25 @@ n8n_encryption_key: "{{ vault_n8n_encryption_key }}"
 redis_password: "{{ vault_redis_password }}"
 openai_api_key: "{{ vault_openai_api_key }}"
 
+# Cloudflare настройки
+cloudflare_enabled: true
+cloudflare_domain: "example.com"  # Замените на свой домен
+cloudflare_email: "{{ vault_cloudflare_email }}"  # Email-адрес Cloudflare
+cloudflare_api_key: "{{ vault_cloudflare_api_key }}"  # Глобальный API-ключ
+cloudflare_api_token: "{{ vault_cloudflare_api_token }}"  # API-токен (предпочтительно)
+cloudflare_zone_id: "{{ vault_cloudflare_zone_id }}"  # ID зоны домена
+cloudflare_proxied: true  # Проксирование через Cloudflare
+cloudflare_ssl_mode: "full_strict"  # full, full_strict или flexible
+cloudflare_origin_cert_days: 5475  # Срок действия Origin сертификата (15 лет)
+
+# Hetzner Cloud настройки
+hetzner_enabled: true
+hetzner_api_token: "{{ vault_hetzner_api_token }}"
+hetzner_network_id: "{{ vault_hetzner_network_id | default('') }}"
+hetzner_firewall_name: "{{ project_name }}-firewall"
+hetzner_allow_ssh_from_ips:
+  - "0.0.0.0/0"  # Разрешить SSH со всех IP (замените на свои)
+
 # Настройки сервера
 swap_size_mb: 4096
 timezone: Europe/Moscow
@@ -18,6 +37,26 @@ enable_firewall: true
 enable_fail2ban: true
 ssh_port: 22
 ssh_service_name: ssh  # Имя сервиса SSH (ssh для Ubuntu/Debian, sshd для CentOS/RHEL)
+ssh_user_home: "/home/{{ ansible_user }}"  # Домашняя директория пользователя для SSH-ключей
+
+# Настройки SSH-ключей (опционально)
+# Раскомментируйте и настройте для использования вашего публичного ключа
+# ssh_public_key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+
+# Настройки Fail2Ban
+fail2ban_bantime: "4h"  # Время блокировки IP
+fail2ban_findtime: "10m"  # Временное окно для отслеживания неудачных попыток
+fail2ban_maxretry: 3  # Количество неудачных попыток перед блокировкой
+fail2ban_maxtime: "48h"  # Максимальное время блокировки при повторных нарушениях
+fail2ban_ssh_maxretry: 3  # Специально для SSH
+fail2ban_ssh_findtime: "5m"  # Специально для SSH
+fail2ban_ssh_bantime: "6h"  # Специально для SSH
+
+# Настройки автоматических обновлений
+unattended_upgrade_auto_reboot: false  # Автоматическая перезагрузка при необходимости
+unattended_upgrade_reboot_time: "02:00"  # Время для перезагрузки
+unattended_upgrade_email: "root"  # Email для отчетов
+unattended_upgrade_mail_report: "on-change"  # Когда отправлять отчеты (on-change, always, only-on-error)
 
 # Настройки резервного копирования
 backup_dir: /opt/backups/n8n-super-agent

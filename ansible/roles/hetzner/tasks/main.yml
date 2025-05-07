@@ -1,0 +1,128 @@
+---
+# Задачи для роли Hetzner Cloud Firewall
+
+- name: Проверка необходимых переменных
+  fail:
+    msg: "Переменная {{ item }} не определена"
+  when: item is not defined or item | length == 0
+  with_items:
+    - hetzner_api_token
+  tags: hetzner
+
+- name: Установка зависимостей для Python
+  apt:
+    name:
+      - python3-pip
+      - python3-dev
+    state: present
+  tags: hetzner
+
+- name: Установка Python-модуля для работы с Hetzner API
+  pip:
+    name:
+      - hcloud
+    state: present
+  tags: hetzner
+
+- name: Получение информации о сервере
+  uri:
+    url: "https://api.hetzner.cloud/v1/servers?name={{ inventory_hostname }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ hetzner_api_token }}"
+    status_code: 200
+    body_format: json
+  register: server_info
+  tags: hetzner
+
+- name: Проверка существования сервера
+  fail:
+    msg: "Сервер с именем {{ inventory_hostname }} не найден в Hetzner Cloud"
+  when: server_info.json.servers | length == 0
+  tags: hetzner
+
+- name: Сохранение ID сервера
+  set_fact:
+    hetzner_server_id: "{{ server_info.json.servers[0].id }}"
+  tags: hetzner
+
+- name: Проверка существования межсетевого экрана
+  uri:
+    url: "https://api.hetzner.cloud/v1/firewalls?name={{ hetzner_firewall_name }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ hetzner_api_token }}"
+    status_code: 200
+    body_format: json
+  register: firewall_info
+  tags: hetzner
+
+- name: Создание межсетевого экрана, если он не существует
+  uri:
+    url: "https://api.hetzner.cloud/v1/firewalls"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ hetzner_api_token }}"
+    body:
+      name: "{{ hetzner_firewall_name }}"
+      rules: []  # Правила добавим позже
+    body_format: json
+    status_code: [200, 201]
+  register: firewall_creation
+  when: firewall_info.json.firewalls | length == 0
+  tags: hetzner
+
+- name: Сохранение ID межсетевого экрана
+  set_fact:
+    hetzner_firewall_id: "{{ (firewall_info.json.firewalls | length > 0) | ternary(firewall_info.json.firewalls[0].id, firewall_creation.json.firewall.id) }}"
+  tags: hetzner
+
+- name: Подготовка правил межсетевого экрана
+  set_fact:
+    firewall_rules:
+      - direction: "in"
+        protocol: "tcp"
+        port: "22"
+        description: "SSH"
+        source_ips: "{{ hetzner_allow_ssh_from_ips }}"
+      - direction: "in"
+        protocol: "tcp"
+        port: "80"
+        description: "HTTP"
+        source_ips: ["0.0.0.0/0", "::/0"]
+      - direction: "in"
+        protocol: "tcp"
+        port: "443"
+        description: "HTTPS"
+        source_ips: ["0.0.0.0/0", "::/0"]
+      - direction: "in"
+        protocol: "icmp"
+        description: "ICMP (Ping)"
+        source_ips: ["0.0.0.0/0", "::/0"]
+  tags: hetzner
+
+- name: Применение правил межсетевого экрана (обновление)
+  uri:
+    url: "https://api.hetzner.cloud/v1/firewalls/{{ hetzner_firewall_id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ hetzner_api_token }}"
+    body:
+      name: "{{ hetzner_firewall_name }}"
+      rules: "{{ firewall_rules }}"
+    body_format: json
+    status_code: 200
+  tags: hetzner
+
+- name: Применение межсетевого экрана к серверу
+  uri:
+    url: "https://api.hetzner.cloud/v1/firewalls/{{ hetzner_firewall_id }}/actions/apply_to_resources"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ hetzner_api_token }}"
+    body:
+      servers:
+        - id: "{{ hetzner_server_id }}"
+    body_format: json
+    status_code: [200, 201]
+  tags: hetzner

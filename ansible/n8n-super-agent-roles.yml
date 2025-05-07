@@ -66,17 +66,49 @@
       
     - role: security
       tags: security
-      
+    
+    # Добавление роли Hetzner Cloud Firewall, если включена
+    - role: hetzner
+      tags: hetzner
+      when: hetzner_enabled | default(false) | bool
+    
+    # Настройка приложения n8n-super-agent перед интеграцией с Cloudflare
     - role: n8n-setup
       tags: n8n-setup
+    
+    # Добавление роли Cloudflare, если включена
+    - role: cloudflare
+      tags: cloudflare
+      when: cloudflare_enabled | default(false) | bool
 
   post_tasks:
+    - name: Проверка доступности сервисов
+      uri:
+        url: "http://localhost:{{ item.port }}{{ item.path }}"
+        method: GET
+        status_code: "{{ item.status }}"
+        timeout: 5
+      register: service_check
+      ignore_errors: yes
+      with_items:
+        - { name: "n8n", port: "5678", path: "/healthz", status: "200" }
+        - { name: "nginx", port: "80", path: "/", status: "200,301,302" }
+      tags: check
+    
+    - name: Отображение результатов проверки сервисов
+      debug:
+        msg: "Сервис {{ item.item.name }} {{ 'доступен' if item.status == 200 else 'недоступен или возвращает ошибку' }}"
+      loop: "{{ service_check.results }}"
+      tags: check
+
     - name: Отображение информации о развернутой системе
       debug:
         msg:
           - "n8n-super-agent успешно развернут на {{ inventory_hostname }}"
           - "Доступ к n8n: https://{{ inventory_hostname }}"
           - "Учетные данные: {{ n8n_user }} / [заданный пароль]"
+          - "{% if cloudflare_enabled | default(false) | bool %}Настроена защита Cloudflare с режимом SSL: {{ cloudflare_ssl_mode }}{% endif %}"
+          - "{% if hetzner_enabled | default(false) | bool %}Настроен Hetzner Cloud Firewall: {{ hetzner_firewall_name }}{% endif %}"
           - "Для запуска ручного резервного копирования: cd {{ project_dir }} && make backup"
           - "Для проверки системы: cd {{ project_dir }} && make check"
       tags: always

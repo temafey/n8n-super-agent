@@ -1,0 +1,7 @@
+---
+# Значения по умолчанию для роли cloudflare
+
+cloudflare_enabled: false
+cloudflare_proxied: true
+cloudflare_ssl_mode: "full_strict"
+cloudflare_origin_cert_days: 5475  # 15 лет
