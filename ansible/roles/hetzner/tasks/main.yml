@@ -77,6 +77,35 @@
     hetzner_firewall_id: "{{ (firewall_info.json.firewalls | length > 0) | ternary(firewall_info.json.firewalls[0].id, firewall_creation.json.firewall.id) }}"
   tags: hetzner
 
+# Получение IP-адресов Cloudflare для ограничения доступа
+- name: Скачивание списка IPv4 Cloudflare
+  uri:
+    url: https://www.cloudflare.com/ips-v4
+    return_content: yes
+  register: cloudflare_ipv4_response
+  when: cloudflare_restrict_direct_access | default(false)
+  tags: hetzner
+  
+- name: Скачивание списка IPv6 Cloudflare
+  uri:
+    url: https://www.cloudflare.com/ips-v6
+    return_content: yes
+  register: cloudflare_ipv6_response
+  when: cloudflare_restrict_direct_access | default(false)
+  tags: hetzner
+
+- name: Преобразование списка IPv4 Cloudflare в массив
+  set_fact:
+    cloudflare_ipv4_list: "{{ cloudflare_ipv4_response.content.split('\n') | select('!=', '') | list }}"
+  when: cloudflare_restrict_direct_access | default(false) and cloudflare_ipv4_response is defined
+  tags: hetzner
+
+- name: Преобразование списка IPv6 Cloudflare в массив
+  set_fact:
+    cloudflare_ipv6_list: "{{ cloudflare_ipv6_response.content.split('\n') | select('!=', '') | list }}"
+  when: cloudflare_restrict_direct_access | default(false) and cloudflare_ipv6_response is defined
+  tags: hetzner
+
 - name: Подготовка правил межсетевого экрана
   set_fact:
     firewall_rules:
@@ -89,12 +118,12 @@
         protocol: "tcp"
         port: "80"
         description: "HTTP"
-        source_ips: ["0.0.0.0/0", "::/0"]
+        source_ips: "{{ cloudflare_restrict_direct_access | default(false) | ternary(cloudflare_ipv4_list, ['0.0.0.0/0']) + cloudflare_restrict_direct_access | default(false) | ternary(cloudflare_ipv6_list, ['::/0']) }}"
       - direction: "in"
         protocol: "tcp"
         port: "443"
         description: "HTTPS"
-        source_ips: ["0.0.0.0/0", "::/0"]
+        source_ips: "{{ cloudflare_restrict_direct_access | default(false) | ternary(cloudflare_ipv4_list, ['0.0.0.0/0']) + cloudflare_restrict_direct_access | default(false) | ternary(cloudflare_ipv6_list, ['::/0']) }}"
       - direction: "in"
         protocol: "icmp"
         description: "ICMP (Ping)"

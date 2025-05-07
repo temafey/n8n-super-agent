@@ -282,7 +282,7 @@
   when: cloudflare_ssl_mode == "full_strict"
   tags: cloudflare
 
-# Базовые настройки WAF на Cloudflare (firewall rules)
+# Расширенные настройки WAF на Cloudflare (firewall rules)
 - name: Создание правила WAF для блокировки сканеров уязвимостей
   uri:
     url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/firewall/rules"
@@ -298,7 +298,7 @@
     body:
       description: "Block vulnerability scanners"
       action: "managed_challenge"
-      expression: "(http.user_agent contains \"nikto\") or (http.user_agent contains \"sqlmap\") or (http.user_agent contains \"masscan\") or (lower(http.user_agent) contains \"nmap\")"
+      expression: "(http.user_agent contains \"nikto\") or (http.user_agent contains \"sqlmap\") or (http.user_agent contains \"masscan\") or (lower(http.user_agent) contains \"nmap\") or (lower(http.user_agent) contains \"curl/\") or (lower(http.user_agent) contains \"wget/\")"
       paused: false
     body_format: json
     status_code: [200, 201]
@@ -324,3 +324,47 @@
     body_format: json
     status_code: [200, 201]
   tags: cloudflare
+
+- name: Создание правила WAF для чувствительных путей администрирования
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/firewall/rules"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      description: "Challenge for sensitive admin paths"
+      action: "managed_challenge"
+      expression: "(http.request.uri.path eq \"/wp-login.php\") or (http.request.uri.path eq \"/xmlrpc.php\") or (http.request.uri.path contains \"/admin/\") or (http.request.uri.path contains \"/administrator/\")"
+      paused: false
+    body_format: json
+    status_code: [200, 201]
+  tags: cloudflare
+  when: cloudflare_protect_admin_paths | default(true)
+
+- name: Создание правила WAF для блокировки запросов из указанных стран
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/firewall/rules"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      {% if cloudflare_api_token is defined and cloudflare_api_token | length > 0 %}
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      {% else %}
+      X-Auth-Email: "{{ cloudflare_email }}"
+      X-Auth-Key: "{{ cloudflare_api_key }}"
+      {% endif %}
+    body:
+      description: "Block requests from specified countries"
+      action: "block"
+      expression: "{{ cloudflare_country_blocking_expression }}"
+      paused: false
+    body_format: json
+    status_code: [200, 201]
+  tags: cloudflare
+  when: cloudflare_blocked_countries is defined and cloudflare_blocked_countries | length > 0

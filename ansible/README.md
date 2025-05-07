@@ -184,17 +184,17 @@ ansible-playbook -i inventory.ini n8n-super-agent.yml --check
 
 Основные переменные проекта находятся в файле `group_vars/n8n_servers/vars.yml`:
 
-| Переменная | Описание | Пример значения |
-|------------|----------|-----------------|
-| project_dir | Директория установки | /opt/n8n-super-agent |
-| git_repo | URL репозитория | https://github.com/yourusername/n8n-super-agent.git |
-| git_branch | Ветка репозитория | main |
-| n8n_user | Имя пользователя n8n | admin |
-| timezone | Временная зона | Europe/Moscow |
-| swap_size_mb | Размер файла подкачки | 4096 |
-| enable_firewall | Включение брандмауэра | true |
-| enable_backups | Включение резервного копирования | true |
-| backup_retention_days | Срок хранения резервных копий | 7 |
+| Переменная | Описание | Пример значения                                     |
+|------------|----------|-----------------------------------------------------|
+| project_dir | Директория установки | /opt/n8n-super-agent                                |
+| git_repo | URL репозитория | https://github.com/temafey/n8n-super-agent.git|
+| git_branch | Ветка репозитория | main                                                |
+| n8n_user | Имя пользователя n8n | admin                                               |
+| timezone | Временная зона | Europe/Kyiv                                         |
+| swap_size_mb | Размер файла подкачки | 4096                                                |
+| enable_firewall | Включение брандмауэра | true                                                |
+| enable_backups | Включение резервного копирования | true                                                |
+| backup_retention_days | Срок хранения резервных копий | 7                                                   |
 
 Секретные переменные находятся в `group_vars/n8n_servers/vault.yml`:
 

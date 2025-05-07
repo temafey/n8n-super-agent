@@ -22,17 +22,28 @@ cloudflare_proxied: true  # Проксирование через Cloudflare
 cloudflare_ssl_mode: "full_strict"  # full, full_strict или flexible
 cloudflare_origin_cert_days: 5475  # Срок действия Origin сертификата (15 лет)
 
+# Настройки безопасности Cloudflare WAF
+cloudflare_protect_admin_paths: true  # Блокировать доступ к чувствительным путям администрирования
+cloudflare_blocked_countries: []     # Список стран для блокировки (пример: ["RU", "CN"])
+cloudflare_country_blocking_expression: "(ip.geoip.country in {{% for country in cloudflare_blocked_countries %}{% if not loop.first %} {% endif %}\"{{ country }}\"{% endfor %}})"  # Автоматически генерируемое выражение для блокировки стран
+
+# Ограничение доступа только к IP Cloudflare
+cloudflare_restrict_direct_access: false  # Установите true для ограничения доступа только с IP Cloudflare
+
 # Hetzner Cloud настройки
 hetzner_enabled: true
 hetzner_api_token: "{{ vault_hetzner_api_token }}"
 hetzner_network_id: "{{ vault_hetzner_network_id | default('') }}"
 hetzner_firewall_name: "{{ project_name }}-firewall"
+# ВНИМАНИЕ! В целях безопасности настоятельно рекомендуется заменить 0.0.0.0/0 на ваши конкретные IP-адреса
+# Пример: - "203.0.113.1/32"  # Ваш домашний IP
+#         - "198.51.100.0/24" # Диапазон IP вашей компании
 hetzner_allow_ssh_from_ips:
-  - "0.0.0.0/0"  # Разрешить SSH со всех IP (замените на свои)
+  - "0.0.0.0/0"  # Разрешить SSH со всех IP (замените на свои конкретные IP!)
 
 # Настройки сервера
 swap_size_mb: 4096
-timezone: Europe/Moscow
+timezone: Europe/Kyiv
 enable_firewall: true
 enable_fail2ban: true
 ssh_port: 22
