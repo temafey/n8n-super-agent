@@ -704,20 +704,9 @@
       register: check_script_exists
 
     - name: Создание простого скрипта check-system.sh, если он отсутствует
-      copy:
+      template:
+        src: check-system.j2
         dest: "{{ project_dir }}/check-system.sh"
-        content: |
-          #!/bin/bash
-
-          echo "Проверка системы n8n супер-агента..."
-
-          # Проверка запущенных контейнеров
-          echo -e "\n=== Проверка запущенных контейнеров ==="
-          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-          echo -e "\n=== Проверка завершена ==="
-          echo "Если все сервисы запущены, система готова к использованию."
-          echo "Откройте https://localhost в браузере для доступа к интерфейсу n8n."
         mode: '0755'
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"

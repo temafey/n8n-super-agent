@@ -1,0 +1,27 @@
+#!/bin/bash
+
+echo "Проверка системы n8n супер-агента..."
+
+# Проверка запущенных контейнеров
+echo -e "\n=== Проверка запущенных контейнеров ==="
+docker ps --format "table {% raw %}{{.Names}}{% endraw %}\t{% raw %}{{.Status}}{% endraw %}\t{% raw %}{{.Ports}}{% endraw %}"
+
+# Проверка доступности Weaviate
+echo -e "\n=== Проверка доступности Weaviate ==="
+curl -s http://localhost:8087/v1/.well-known/ready || echo "Weaviate недоступен!"
+
+# Проверка доступности Redis
+echo -e "\n=== Проверка доступности Redis ==="
+docker exec $(docker ps -qf "name=n8n-super-agent_redis") redis-cli ping || echo "Redis недоступен!"
+
+# Проверка доступности сервиса эмбеддингов
+echo -e "\n=== Проверка доступности сервиса эмбеддингов ==="
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/info || echo "Сервис эмбеддингов недоступен!"
+
+# Проверка доступности n8n API
+echo -e "\n=== Проверка доступности n8n API ==="
+curl -s -o /dev/null -w "%{http_code}" http://localhost:5678/rest/health || echo "n8n API недоступен!"
+
+echo -e "\n=== Проверка завершена ==="
+echo "Если все сервисы запущены, система готова к использованию."
+echo "Откройте https://localhost в браузере для доступа к интерфейсу n8n."

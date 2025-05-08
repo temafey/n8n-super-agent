@@ -58,7 +58,228 @@
     creates: "{{ project_dir }}/nginx/certs/server.crt"
   tags: n8n-setup
 
-- name: Установка прав выполнения для скриптов
+- name: Проверка успешного клонирования репозитория
+  stat:
+    path: "{{ project_dir }}/setup.sh"
+  register: repo_check
+  tags: n8n-setup
+
+- name: Вывод информации о репозитории
+  debug:
+    msg: "Репозиторий {{ 'успешно клонирован' if repo_check.stat.exists else 'не удалось клонировать' }}"
+  tags: n8n-setup
+
+# Создаем необходимые скрипты, если они отсутствуют
+- name: Проверка наличия основных скриптов
+  stat:
+    path: "{{ project_dir }}/{{ item }}"
+  loop:
+    - "setup.sh"
+    - "make-scripts-executable.sh"
+    - "fix-issues.sh"
+    - "rotate-logs.sh"
+    - "check-system.sh"
+    - "import-templates.sh"
+  register: script_checks
+  tags: n8n-setup
+
+- name: Создание простого скрипта make-scripts-executable.sh, если он отсутствует
+  copy:
+    dest: "{{ project_dir }}/make-scripts-executable.sh"
+    content: |
+      #!/bin/bash
+
+      # Делаем скрипты исполняемыми
+      chmod +x setup.sh
+      chmod +x fix-issues.sh
+      chmod +x rotate-logs.sh
+      chmod +x check-system.sh
+      chmod +x import-templates.sh
+
+      echo "Все скрипты сделаны исполняемыми."
+      echo "После этого можно запустить ./setup.sh для инициализации проекта."
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  when: script_checks.results[1].stat.exists == false
+  tags: n8n-setup
+
+- name: Создание других скриптов, если они отсутствуют
+  copy:
+    dest: "{{ project_dir }}/{{ item.path }}"
+    content: "{{ item.content }}"
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  loop:
+    - { path: "setup.sh", content: |
+        #!/bin/bash
+
+        echo "Инициализация проекта n8n-super-agent..."
+
+        # Создание необходимых директорий
+        mkdir -p logs/n8n logs/zep logs/postgres logs/postgres-zep logs/nginx logs/redis logs/weaviate nginx/certs backups
+
+        # Создание самоподписанного сертификата, если он не существует
+        if [ ! -f nginx/certs/server.crt ]; then
+          mkdir -p nginx/certs
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout nginx/certs/server.key -out nginx/certs/server.crt \
+            -subj "/C=RU/ST=State/L=City/O=Organization/CN=localhost"
+          echo "Самоподписанный SSL сертификат создан"
+        fi
+
+        # Запуск контейнеров
+        docker-compose up -d
+
+        echo "Инициализация завершена."
+        echo "Система доступна по адресу https://localhost"
+      }
+    - { path: "fix-issues.sh", content: |
+        #!/bin/bash
+
+        echo "Применение исправлений и улучшений..."
+
+        # Создание необходимых директорий
+        mkdir -p logs/n8n logs/zep logs/postgres logs/postgres-zep logs/nginx logs/redis logs/weaviate nginx/certs backups
+
+        # Делаем все скрипты исполняемыми
+        find . -type f -name "*.sh" -exec chmod +x {} \;
+
+        echo "Все исправления применены."
+      }
+    - { path: "check-system.sh", content: |
+        #!/bin/bash
+
+        echo "Проверка системы n8n супер-агента..."
+
+        # Проверка запущенных контейнеров
+        echo -e "\n=== Проверка запущенных контейнеров ==="
+        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+        echo -e "\n=== Проверка завершена ==="
+        echo "Если все сервисы запущены, система готова к использованию."
+        echo "Откройте https://localhost в браузере для доступа к интерфейсу n8n."
+      }
+    - { path: "rotate-logs.sh", content: |
+        #!/bin/bash
+
+        # Скрипт для ротации и архивирования логов
+
+        # Директории для логов
+        LOG_DIRS=(
+          "logs/n8n"
+          "logs/zep"
+          "logs/postgres"
+          "logs/postgres-zep"
+          "logs/nginx"
+          "logs/redis"
+          "logs/weaviate"
+        )
+
+        # Создаем директории для логов, если они не существуют
+        for dir in "${LOG_DIRS[@]}"; do
+          mkdir -p "$dir"
+        done
+
+        # Функция для ротации логов в директории
+        rotate_logs_in_dir() {
+          local dir=$1
+          local max_size=$2  # в МБ
+          local max_age=$3   # в днях
+          
+          echo "Обработка директории: $dir"
+          
+          # Ротация больших файлов
+          find "$dir" -type f -name "*.log" -size +"$max_size"M 2>/dev/null | while read log; do
+            timestamp=$(date +%Y%m%d-%H%M%S)
+            echo "Ротация файла: $log (больше $max_size МБ)"
+            mv "$log" "${log%.log}-${timestamp}.log"
+            gzip "${log%.log}-${timestamp}.log"
+          done
+          
+          # Удаление старых архивов
+          find "$dir" -type f -name "*.gz" -mtime +"$max_age" 2>/dev/null | while read old_log; do
+            echo "Удаление старого архива: $old_log (старше $max_age дней)"
+            rm "$old_log"
+          done
+        }
+
+        # Ротация логов для каждой директории
+        # Параметры: директория, максимальный размер в МБ, максимальный возраст в днях
+        rotate_logs_in_dir "logs/n8n" 50 30
+        rotate_logs_in_dir "logs/zep" 50 30
+        rotate_logs_in_dir "logs/postgres" 100 30
+        rotate_logs_in_dir "logs/postgres-zep" 100 30
+        rotate_logs_in_dir "logs/nginx" 50 30
+        rotate_logs_in_dir "logs/redis" 20 30
+        rotate_logs_in_dir "logs/weaviate" 50 30
+
+        echo "Ротация логов завершена!"
+      }
+    - { path: "import-templates.sh", content: |
+        #!/bin/bash
+
+        # This script imports n8n workflow templates using the provided API key
+
+        # Set the API key
+        N8N_API_KEY=$(cat .n8n_api_key 2>/dev/null || echo "")
+
+        if [ -z "$N8N_API_KEY" ]; then
+          echo "WARNING: API key not found in .n8n_api_key file."
+          echo "Please create this file with your n8n API key before importing templates."
+          exit 1
+        fi
+
+        # Directory containing the template files
+        TEMPLATES_DIR="./workflows/templates"
+
+        # Create directory if it doesn't exist
+        mkdir -p "$TEMPLATES_DIR"
+
+        # Function for logging
+        function log {
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+        }
+
+        log "Starting template import with provided API key..."
+
+        # Check if there are any templates
+        if [ ! "$(ls -A $TEMPLATES_DIR 2>/dev/null)" ]; then
+          echo "No template files found in $TEMPLATES_DIR."
+          echo "Please add your workflow template JSON files to this directory."
+          exit 0
+        fi
+
+        # Import each template
+        for template in "$TEMPLATES_DIR"/*.json; do
+            if [ -f "$template" ]; then
+                filename=$(basename -- "$template")
+                log "Importing template: $filename"
+                
+                result=$(curl -X POST "http://localhost:5678/rest/workflows" \
+                  -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                  -H "Content-Type: application/json" \
+                  -d @"$template" -s)
+                
+                # Check if import was successful
+                if echo "$result" | grep -q "\"id\":"; then
+                    log "✅ Successfully imported $filename"
+                else
+                    log "❌ Failed to import $filename: $result"
+                fi
+            fi
+        done
+
+        log "Template import completed!"
+      }
+  when: "item.path not in script_checks.results | map(attribute='item') | list or
+        (script_checks.results | selectattr('item', 'equalto', item.path) | map(attribute='stat.exists') | list | first == false)"
+  loop_control:
+    label: "{{ item.path }}"
+  tags: n8n-setup
+
+- name: Установка прав выполнения для скриптов, если они существуют
   file:
     path: "{{ project_dir }}/{{ item }}"
     mode: '0755'
@@ -69,6 +290,8 @@
     - "fix-issues.sh"
     - "import-templates.sh"
     - "make-scripts-executable.sh"
+  when: "item in script_checks.results | map(attribute='item') | list and
+        (script_checks.results | selectattr('item', 'equalto', item) | map(attribute='stat.exists') | list | first == true)"
   tags: n8n-setup
 
 # Проверка версии Docker для определения формата команд docker-compose
