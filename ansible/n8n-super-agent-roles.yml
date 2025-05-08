@@ -41,26 +41,15 @@
           - python3-pip
           - unzip
           - acl
+          - chrony  # Добавляем chrony в базовые пакеты
         state: present
       tags: always
 
-    - name: Установка временной зоны
-      community.general.timezone:
-        name: "{{ timezone }}"
-      tags: system
-
-    - name: Запуск и включение chrony
-      service:
-        name: chrony
-        state: started
-        enabled: yes
+  roles:
+    # Добавляем роль system для настройки времени и других системных параметров
+    - role: system
       tags: system
       
-    - name: Настройка swap
-      include_tasks: "{{ playbook_dir }}/tasks/swap.yml"
-      tags: system
-
-  roles:
     - role: docker
       tags: docker
       

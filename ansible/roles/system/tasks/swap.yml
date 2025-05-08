@@ -1,0 +1,41 @@
+---
+# Настройка файла подкачки
+
+- name: Проверка наличия файла подкачки
+  stat:
+    path: /swapfile
+  register: swap_file
+
+- name: Создание файла подкачки
+  command: "dd if=/dev/zero of=/swapfile bs=1M count={{ swap_size_mb }}"
+  when: not swap_file.stat.exists
+  
+- name: Установка прав на файл подкачки
+  file:
+    path: /swapfile
+    owner: root
+    group: root
+    mode: '0600'
+  when: not swap_file.stat.exists
+
+- name: Форматирование файла подкачки
+  command: mkswap /swapfile
+  when: not swap_file.stat.exists
+
+- name: Включение файла подкачки
+  command: swapon /swapfile
+  when: not swap_file.stat.exists
+  ignore_errors: yes
+
+- name: Добавление swap в fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "/swapfile none swap sw 0 0"
+    state: present
+  when: not swap_file.stat.exists
+
+- name: Настройка параметра swappiness
+  sysctl:
+    name: vm.swappiness
+    value: '10'
+    state: present

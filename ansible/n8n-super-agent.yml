@@ -41,9 +41,14 @@
           - ufw
           - chrony
           - python3-pip
+          - python3-setuptools
+          - python3-dev
+          - build-essential
           - unzip
           - acl
+          - software-properties-common
         state: present
+      ignore_errors: yes
 
     ### 2. Настройка времени ###
     - name: Проверка наличия коллекции community.general
@@ -54,6 +59,7 @@
       delegate_to: localhost
       run_once: true
       tags: system
+      become: false
       
     - name: Установка коллекции community.general
       command: ansible-galaxy collection install community.general
@@ -61,6 +67,7 @@
       delegate_to: localhost
       run_once: true
       tags: system
+      become: false
       
     - name: Установка временной зоны
       community.general.timezone:
@@ -74,49 +81,332 @@
       failed_when: false
       tags: system
       
-    - name: Запуск и включение chrony
+    # Проверка наличия различных служб NTP
+    - name: Проверка доступных служб NTP
+      stat:
+        path: "/etc/init.d/{{ item }}"
+      register: ntp_services
+      loop: "{{ chrony_service_names }}"
+      changed_when: false
+      ignore_errors: yes
+      tags: system, time
+
+    - name: Определение доступного сервиса NTP
+      set_fact:
+        chrony_service: "{{ item.item }}"
+      when: item.stat.exists | default(false)
+      loop: "{{ ntp_services.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      register: chrony_service_result
+      tags: system, time
+
+    - name: Проверка службы chrony с systemd
+      shell: systemctl list-units --type=service | grep -E '(chrony|ntp)'
+      register: systemd_services
+      changed_when: false
+      failed_when: false
+      tags: system, time
+
+    - name: Определение сервиса NTP из systemd
+      set_fact:
+        chrony_service: "{{ systemd_services.stdout_lines[0].split('.service')[0] }}"
+      when: chrony_service is not defined and systemd_services.stdout_lines | length > 0
+      tags: system, time
+      
+    - name: Настройка конфигурации chrony (Debian/Ubuntu)
+      template:
+        src: roles/system/templates/chrony.conf.j2
+        dest: /etc/chrony/chrony.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart chrony
+      when: ansible_os_family == "Debian" and ansible_os_family is defined
+      ignore_errors: yes
+      
+    - name: Настройка конфигурации chrony (CentOS/RHEL)
+      template:
+        src: roles/system/templates/chrony.conf.j2
+        dest: /etc/chrony.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart chrony
+      when: ansible_os_family == "RedHat" and ansible_os_family is defined
+      ignore_errors: yes
+      
+    - name: Запуск и включение найденной службы NTP
       service:
-        name: chrony
+        name: "{{ chrony_service | default('chrony') }}"
         state: started
         enabled: yes
+      when: chrony_service is defined
+      ignore_errors: yes
+
+    - name: Проверка статуса синхронизации времени
+      command: timedatectl status
+      register: timedatectl_status
+      changed_when: false
+
+    - name: Вывод информации о статусе времени
+      debug:
+        var: timedatectl_status.stdout_lines
 
     ### 3. Установка Docker ###
-    - name: Добавление ключа GPG Docker
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+    - name: Проверка наличия Docker
+      command: docker --version
+      register: docker_version_check
+      failed_when: false
+      changed_when: false
+      
+    - name: Проверка типа дистрибутива
+      debug:
+        msg: "Дистрибутив: {{ ansible_distribution }}, Версия: {{ ansible_distribution_version }}, Релиз: {{ ansible_distribution_release | default('не определен') }}"
 
-    - name: Добавление репозитория Docker
-      apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-        state: present
-
-    - name: Установка Docker и Docker Compose
+    # Вариант 1: Использование упрощенной установки docker.io вместо docker-ce
+    - name: Установка Docker через пакет docker.io
       apt:
         name:
-          - docker-ce
+          - docker.io
+          - docker-compose
+        state: present
+        update_cache: yes
+      register: docker_io_install
+      failed_when: false
+      when: docker_version_check.rc != 0
+
+    # Вариант 2: Установка docker-ce, если первый способ не сработал
+    - name: Создание директории для ключей
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+
+    - name: Скачивание ключа GPG Docker
+      get_url:
+        url: https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg
+        dest: /tmp/docker.gpg
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+
+    - name: Установка ключа GPG Docker
+      shell: |
+        cat /tmp/docker.gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+      register: gpg_result
+      failed_when: false
+
+    - name: Вывод ошибок GPG, если есть
+      debug:
+        var: gpg_result
+      when: 
+        - gpg_result is defined 
+        - gpg_result.stderr | default('') != ''
+
+    - name: Альтернативная установка ключа GPG Docker
+      apt_key:
+        url: https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg
+        state: present
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+        - gpg_result is defined 
+        - gpg_result.rc != 0
+
+    - name: Добавление репозитория Docker (Ubuntu/Debian)
+      apt_repository:
+        repo: "deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+        - gpg_result is defined 
+        - gpg_result.rc == 0
+
+    - name: Альтернативный способ добавления репозитория Docker
+      apt_repository:
+        repo: "deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+        - gpg_result is defined 
+        - gpg_result.rc != 0
+
+    - name: Обновление кэша apt после добавления репозитория
+      apt:
+        update_cache: yes
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+
+    # Проверка доступности пакетов Docker
+    - name: Проверка доступности пакетов Docker
+      shell: apt-cache policy docker-ce
+      register: docker_pkg_check
+      changed_when: false
+      failed_when: false
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+
+    - name: Вывод информации о пакетах Docker
+      debug:
+        var: docker_pkg_check.stdout_lines
+      when: docker_pkg_check is defined
+
+    # Установка Docker CE если доступно
+    - name: Установка Docker CE и Docker Compose
+      apt:
+        name:
+          - docker-ce 
           - docker-ce-cli
           - containerd.io
           - docker-compose-plugin
         state: present
         update_cache: yes
+      when: 
+        - docker_version_check.rc != 0 
+        - docker_io_install is defined 
+        - docker_io_install.failed
+        - docker_pkg_check is defined 
+        - "'Installed: (none)' in docker_pkg_check.stdout"
+
+    - name: Настройка параметров Docker daemon
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "100m",
+              "max-file": "3"
+            },
+            "default-address-pools": [
+              {"base": "172.17.0.0/16", "size": 24}
+            ]
+          }
+        mode: '0644'
+        owner: root
+        group: root
+      when: docker_version_check.rc != 0
+      ignore_errors: yes
 
     - name: Включение и запуск службы Docker
       service:
         name: docker
         state: started
         enabled: yes
+      ignore_errors: yes
 
-    - name: Установка docker-compose через pip
+    # Проверка наличия pip3
+    - name: Проверка наличия pip3
+      command: pip3 --version
+      register: pip3_check
+      failed_when: false
+      changed_when: false
+
+    # Проверка наличия docker-compose
+    - name: Проверка наличия docker-compose
+      command: which docker-compose
+      register: docker_compose_check
+      failed_when: false
+      changed_when: false
+
+    - name: Обновление и установка pip
+      block:
+        - name: Обновление pip
+          command: python3 -m pip install --upgrade pip
+          when: pip3_check.rc == 0
+          
+        - name: Альтернативный способ установки pip
+          shell: curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3 get-pip.py
+          args:
+            chdir: /tmp
+          when: pip3_check.rc != 0
+      ignore_errors: yes
+
+    # Установка docker-compose с учетом наличия pip
+    - name: Установка docker-compose через pip (при наличии pip)
       pip:
         name: docker-compose
         state: present
+      when: pip3_check.rc == 0
+      ignore_errors: yes
 
-    - name: Создание группы docker и добавление пользователя
+    # Альтернативная установка docker-compose напрямую через curl
+    - name: Альтернативная установка docker-compose
+      block:
+        - name: Скачивание docker-compose
+          get_url:
+            url: https://github.com/docker/compose/releases/download/v2.22.0/docker-compose-{{ ansible_system | lower }}-{{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
+            dest: /usr/local/bin/docker-compose
+            mode: '0755'
+          
+        - name: Создание символической ссылки
+          file:
+            src: /usr/local/bin/docker-compose
+            dest: /usr/bin/docker-compose
+            state: link
+      when: pip3_check.rc != 0 and docker_compose_check.rc != 0
+      ignore_errors: yes
+
+    # Создание группы docker и добавление пользователя
+    - name: Проверка существования группы docker
+      shell: getent group docker || echo "group not exists"
+      register: docker_group_check
+      changed_when: false
+      failed_when: false
+
+    - name: Создание группы docker
+      group:
+        name: docker
+        state: present
+      register: docker_group_result
+      ignore_errors: yes
+
+    # Проверяем результат создания группы docker
+    - name: Повторная проверка существования группы docker после создания
+      shell: getent group docker || echo "group still not exists"
+      register: docker_group_recheck
+      changed_when: false
+      failed_when: false
+      when: docker_group_result is defined
+
+    - name: Добавление пользователя в группу docker
       user:
         name: "{{ ansible_user }}"
         groups: docker
         append: yes
+      when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout
+      ignore_errors: yes
+
+    - name: Альтернативное добавление в группу docker через usermod
+      shell: usermod -aG docker {{ ansible_user }}
+      when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout and docker_group_check.stdout_lines | length > 0
+      ignore_errors: yes
+
+    - name: Применение изменений группы docker
+      meta: reset_connection
+      when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout
 
     ### 4. Настройка безопасности ###
     - name: Настройка ufw для разрешения ssh
@@ -146,6 +436,18 @@
         policy: deny
       when: enable_firewall
 
+    - name: Проверка установки fail2ban
+      command: dpkg -l fail2ban
+      register: fail2ban_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Установка fail2ban, если не установлен
+      apt:
+        name: fail2ban
+        state: present
+      when: fail2ban_installed.rc != 0 and enable_fail2ban | bool
+
     - name: Настройка fail2ban
       copy:
         dest: /etc/fail2ban/jail.local
@@ -157,14 +459,34 @@
           
           [sshd]
           enabled = true
-      when: enable_fail2ban
+      when: enable_fail2ban | bool
+      notify: restart fail2ban
+      ignore_errors: yes
 
-    - name: Перезапуск fail2ban
+    - name: Проверка статуса службы fail2ban
+      shell: systemctl list-units --type=service | grep -E '(fail2ban)'
+      register: fail2ban_service_check
+      changed_when: false
+      failed_when: false
+      when: enable_fail2ban | bool
+
+    - name: Вывод данных о найденной службе fail2ban
+      debug:
+        var: fail2ban_service_check
+      when: enable_fail2ban | bool and fail2ban_service_check is defined
+
+    - name: Сохранение точного имени службы fail2ban
+      set_fact:
+        fail2ban_service_name: "{{ fail2ban_service_check.stdout_lines[0].split('.service')[0] if fail2ban_service_check.stdout_lines is defined and fail2ban_service_check.stdout_lines | length > 0 else 'fail2ban' }}"
+      when: enable_fail2ban | bool and fail2ban_service_check is defined
+
+    - name: Перезапуск fail2ban (c найденным именем службы)
       service:
-        name: fail2ban
+        name: "{{ fail2ban_service_name }}"
         state: restarted
         enabled: yes
-      when: enable_fail2ban
+      when: enable_fail2ban | bool and fail2ban_service_name is defined
+      ignore_errors: yes
 
     ### 5. Настройка swap ###
     - name: Проверка наличия файла подкачки
@@ -172,38 +494,64 @@
         path: /swapfile
       register: swap_file
 
+    - name: Проверка использования swap
+      shell: swapon --show | grep -q '/swapfile'
+      register: swap_in_use
+      changed_when: false
+      failed_when: false
+
     - name: Создание файла подкачки
-      command: "dd if=/dev/zero of=/swapfile bs=1M count={{ swap_size_mb }}"
+      command: "dd if=/dev/zero of=/swapfile bs=1M count={{ swap_size_mb }} status=progress"
+      args:
+        creates: /swapfile
       when: not swap_file.stat.exists
-      
+      register: swap_created
+      ignore_errors: yes
+
+    - name: Повторная проверка наличия файла подкачки после создания
+      stat:
+        path: /swapfile
+      register: swap_file_after_create
+      when: not swap_file.stat.exists
+
     - name: Установка прав на файл подкачки
       file:
         path: /swapfile
         owner: root
         group: root
         mode: '0600'
-      when: not swap_file.stat.exists
+      when: swap_file.stat.exists or (swap_file_after_create is defined and swap_file_after_create.stat.exists)
 
     - name: Форматирование файла подкачки
       command: mkswap /swapfile
-      when: not swap_file.stat.exists
+      when: (swap_file.stat.exists or (swap_file_after_create is defined and swap_file_after_create.stat.exists)) and swap_in_use.rc != 0
+      register: swap_formatted
+      ignore_errors: yes
 
     - name: Включение файла подкачки
       command: swapon /swapfile
-      when: not swap_file.stat.exists
+      when: (swap_file.stat.exists or (swap_file_after_create is defined and swap_file_after_create.stat.exists)) and swap_in_use.rc != 0 and swap_formatted is not failed
+      ignore_errors: yes
+
+    - name: Проверка наличия записи в fstab
+      shell: grep -q '/swapfile none swap' /etc/fstab
+      register: swap_in_fstab
+      changed_when: false
+      failed_when: false
 
     - name: Добавление swap в fstab
       lineinfile:
         path: /etc/fstab
         line: "/swapfile none swap sw 0 0"
         state: present
-      when: not swap_file.stat.exists
+      when: (swap_file.stat.exists or (swap_file_after_create is defined and swap_file_after_create.stat.exists)) and swap_in_fstab.rc != 0
 
     - name: Настройка параметра swappiness
       sysctl:
         name: vm.swappiness
         value: '10'
         state: present
+      ignore_errors: yes
 
     ### 6. Клонирование и настройка проекта ###
     - name: Создание директории проекта
@@ -258,17 +606,260 @@
         executable: /bin/bash
         creates: "{{ project_dir }}/nginx/certs/server.crt"
 
-    - name: Установка прав выполнения для скриптов
-      file:
-        path: "{{ project_dir }}/{{ item }}"
+    - name: Проверка успешного клонирования репозитория
+      stat:
+        path: "{{ project_dir }}/setup.sh"
+      register: repo_check
+
+    - name: Вывод информации о репозитории
+      debug:
+        msg: "Репозиторий {{ 'успешно клонирован' if repo_check.stat.exists else 'не удалось клонировать' }}"
+
+    - name: Создание простого скрипта make-scripts-executable.sh, если он отсутствует
+      copy:
+        dest: "{{ project_dir }}/make-scripts-executable.sh"
+        content: |
+          #!/bin/bash
+
+          # Делаем скрипты исполняемыми
+          chmod +x setup.sh
+          chmod +x fix-issues.sh
+          chmod +x rotate-logs.sh
+          chmod +x check-system.sh
+          chmod +x import-templates.sh
+
+          echo "Все скрипты сделаны исполняемыми."
+          echo "После этого можно запустить ./setup.sh для инициализации проекта."
         mode: '0755'
-      loop:
-        - "setup.sh"
-        - "rotate-logs.sh"
-        - "check-system.sh"
-        - "fix-issues.sh"
-        - "import-templates.sh"
-        - "make-scripts-executable.sh"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      when: not repo_check.stat.exists or repo_check is failed
+
+    # Создаем fix-issues.sh если он тоже отсутствует
+    - name: Проверка наличия fix-issues.sh
+      stat:
+        path: "{{ project_dir }}/fix-issues.sh"
+      register: fix_script_check
+
+    - name: Создание простого скрипта fix-issues.sh, если он отсутствует
+      copy:
+        dest: "{{ project_dir }}/fix-issues.sh"
+        content: |
+          #!/bin/bash
+
+          echo "Применение исправлений и улучшений..."
+
+          # Создание необходимых директорий
+          mkdir -p logs/n8n logs/zep logs/postgres logs/postgres-zep logs/nginx logs/redis logs/weaviate nginx/certs backups
+
+          # Делаем все скрипты исполняемыми
+          find . -type f -name "*.sh" -exec chmod +x {} \;
+
+          echo "Все исправления применены."
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      when: not fix_script_check.stat.exists
+
+    # Создаем setup.sh если он тоже отсутствует
+    - name: Проверка наличия setup.sh
+      stat:
+        path: "{{ project_dir }}/setup.sh"
+      register: setup_script_check
+
+    - name: Создание простого скрипта setup.sh, если он отсутствует
+      copy:
+        dest: "{{ project_dir }}/setup.sh"
+        content: |
+          #!/bin/bash
+
+          echo "Инициализация проекта n8n-super-agent..."
+
+          # Создание необходимых директорий
+          mkdir -p logs/n8n logs/zep logs/postgres logs/postgres-zep logs/nginx logs/redis logs/weaviate nginx/certs backups
+
+          # Создание самоподписанного сертификата, если он не существует
+          if [ ! -f nginx/certs/server.crt ]; then
+            mkdir -p nginx/certs
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -keyout nginx/certs/server.key -out nginx/certs/server.crt \
+              -subj "/C=RU/ST=State/L=City/O=Organization/CN=localhost"
+            echo "Самоподписанный SSL сертификат создан"
+          fi
+
+          # Запуск контейнеров
+          docker-compose up -d
+
+          echo "Инициализация завершена."
+          echo "Система доступна по адресу https://localhost"
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      when: not setup_script_check.stat.exists
+
+    # Создаем check-system.sh
+    - name: Проверка наличия check-system.sh
+      stat:
+        path: "{{ project_dir }}/check-system.sh"
+      register: check_script_exists
+
+    - name: Создание простого скрипта check-system.sh, если он отсутствует
+      copy:
+        dest: "{{ project_dir }}/check-system.sh"
+        content: |
+          #!/bin/bash
+
+          echo "Проверка системы n8n супер-агента..."
+
+          # Проверка запущенных контейнеров
+          echo -e "\n=== Проверка запущенных контейнеров ==="
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+          echo -e "\n=== Проверка завершена ==="
+          echo "Если все сервисы запущены, система готова к использованию."
+          echo "Откройте https://localhost в браузере для доступа к интерфейсу n8n."
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      when: not check_script_exists.stat.exists
+
+    # Создаем rotate-logs.sh
+    - name: Проверка наличия rotate-logs.sh
+      stat:
+        path: "{{ project_dir }}/rotate-logs.sh"
+      register: rotate_script_exists
+
+    - name: Создание простого скрипта rotate-logs.sh, если он отсутствует
+      copy:
+        dest: "{{ project_dir }}/rotate-logs.sh"
+        content: |
+          #!/bin/bash
+
+          # Скрипт для ротации и архивирования логов
+
+          # Директории для логов
+          LOG_DIRS=(
+            "logs/n8n"
+            "logs/zep"
+            "logs/postgres"
+            "logs/postgres-zep"
+            "logs/nginx"
+            "logs/redis"
+            "logs/weaviate"
+          )
+
+          # Создаем директории для логов, если они не существуют
+          for dir in "${LOG_DIRS[@]}"; do
+            mkdir -p "$dir"
+          done
+
+          # Функция для ротации логов в директории
+          rotate_logs_in_dir() {
+            local dir=$1
+            local max_size=$2  # в МБ
+            local max_age=$3   # в днях
+            
+            echo "Обработка директории: $dir"
+            
+            # Ротация больших файлов
+            find "$dir" -type f -name "*.log" -size +"$max_size"M 2>/dev/null | while read log; do
+              timestamp=$(date +%Y%m%d-%H%M%S)
+              echo "Ротация файла: $log (больше $max_size МБ)"
+              mv "$log" "${log%.log}-${timestamp}.log"
+              gzip "${log%.log}-${timestamp}.log"
+            done
+            
+            # Удаление старых архивов
+            find "$dir" -type f -name "*.gz" -mtime +"$max_age" 2>/dev/null | while read old_log; do
+              echo "Удаление старого архива: $old_log (старше $max_age дней)"
+              rm "$old_log"
+            done
+          }
+
+          # Ротация логов для каждой директории
+          # Параметры: директория, максимальный размер в МБ, максимальный возраст в днях
+          rotate_logs_in_dir "logs/n8n" 50 30
+          rotate_logs_in_dir "logs/zep" 50 30
+          rotate_logs_in_dir "logs/postgres" 100 30
+          rotate_logs_in_dir "logs/postgres-zep" 100 30
+          rotate_logs_in_dir "logs/nginx" 50 30
+          rotate_logs_in_dir "logs/redis" 20 30
+          rotate_logs_in_dir "logs/weaviate" 50 30
+
+          echo "Ротация логов завершена!"
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      when: not rotate_script_exists.stat.exists
+
+    # Создаем import-templates.sh
+    - name: Проверка наличия import-templates.sh
+      stat:
+        path: "{{ project_dir }}/import-templates.sh"
+      register: import_script_exists
+
+    - name: Создание простого скрипта import-templates.sh, если он отсутствует
+      copy:
+        dest: "{{ project_dir }}/import-templates.sh"
+        content: |
+          #!/bin/bash
+
+          # This script imports n8n workflow templates using the provided API key
+
+          # Set the API key
+          N8N_API_KEY=$(cat .n8n_api_key 2>/dev/null || echo "")
+
+          if [ -z "$N8N_API_KEY" ]; then
+            echo "WARNING: API key not found in .n8n_api_key file."
+            echo "Please create this file with your n8n API key before importing templates."
+            exit 1
+          fi
+
+          # Directory containing the template files
+          TEMPLATES_DIR="./workflows/templates"
+
+          # Create directory if it doesn't exist
+          mkdir -p "$TEMPLATES_DIR"
+
+          # Function for logging
+          function log {
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+          }
+
+          log "Starting template import with provided API key..."
+
+          # Check if there are any templates
+          if [ ! "$(ls -A $TEMPLATES_DIR 2>/dev/null)" ]; then
+            echo "No template files found in $TEMPLATES_DIR."
+            echo "Please add your workflow template JSON files to this directory."
+            exit 0
+          fi
+
+          # Import each template
+          for template in "$TEMPLATES_DIR"/*.json; do
+              if [ -f "$template" ]; then
+                  filename=$(basename -- "$template")
+                  log "Importing template: $filename"
+                  
+                  result=$(curl -X POST "http://localhost:5678/rest/workflows" \
+                    -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                    -H "Content-Type: application/json" \
+                    -d @"$template" -s)
+                  
+                  # Check if import was successful
+                  if echo "$result" | grep -q "\"id\":"; then
+                      log "✅ Successfully imported $filename"
+                  else
+                      log "❌ Failed to import $filename: $result"
+                  fi
+              fi
+          done
+
+          log "Template import completed!"
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      when: not import_script_exists.stat.exists
 
     ### 7. Запуск проекта ###
     - name: Запуск проекта через make setup
@@ -342,3 +933,43 @@
           - "Учетные данные: {{ n8n_user }} / [заданный пароль]"
           - "Для запуска ручного резервного копирования: cd {{ project_dir }} && make backup"
           - "Для проверки системы: cd {{ project_dir }} && make check"
+          
+  handlers:
+    - name: restart chrony
+      service:
+        name: "{{ chrony_service | default('chrony') }}"
+        state: restarted
+      ignore_errors: yes
+      
+    - name: restart chronyd
+      service:
+        name: chronyd
+        state: restarted
+      ignore_errors: yes
+      when: chrony_service is not defined
+      
+    - name: restart ntp
+      service:
+        name: ntp
+        state: restarted
+      ignore_errors: yes
+      when: chrony_service is not defined
+      
+    - name: restart docker
+      service:
+        name: docker
+        state: restarted
+      ignore_errors: yes
+      
+    - name: reload docker
+      systemd:
+        name: docker
+        daemon_reload: yes
+      ignore_errors: yes
+
+    - name: restart fail2ban
+      service:
+        name: "{{ fail2ban_service_name | default('fail2ban') }}"
+        state: restarted
+      ignore_errors: yes
+      when: fail2ban_service_name is defined or fail2ban_installed.rc == 0

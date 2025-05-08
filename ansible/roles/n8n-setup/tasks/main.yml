@@ -71,8 +71,35 @@
     - "make-scripts-executable.sh"
   tags: n8n-setup
 
+# Проверка версии Docker для определения формата команд docker-compose
+- name: Проверка версии Docker
+  command: docker --version
+  register: docker_version
+  changed_when: false
+  failed_when: false
+  tags: n8n-setup
+
+- name: Проверка наличия docker-compose
+  command: which docker-compose
+  register: docker_compose_check
+  changed_when: false
+  failed_when: false
+  tags: n8n-setup
+
+- name: Проверка наличия docker compose plugin
+  command: docker compose version
+  register: docker_compose_plugin
+  changed_when: false
+  failed_when: false
+  tags: n8n-setup
+
+- name: Определение формата команды docker-compose
+  set_fact:
+    docker_compose_cmd: "{{ 'docker-compose' if docker_compose_check.rc == 0 else 'docker compose' }}"
+  tags: n8n-setup
+
 - name: Проверка уже установленных контейнеров
-  command: docker ps -a --format '{{.Names}}' | grep -q n8n
+  shell: "{{ docker_compose_cmd }} ls 2>/dev/null || docker ps -a --format '{{.Names}}' | grep -q n8n"
   register: docker_check
   failed_when: false
   changed_when: false
@@ -84,18 +111,70 @@
   register: api_key_file
   tags: n8n-setup
 
-- name: Запуск проекта через make setup
-  command: make setup
-  args:
-    chdir: "{{ project_dir }}"
-  become_user: "{{ ansible_user }}"
-  register: setup_result
-  environment:
-    PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+# Обновление Makefile для поддержки разных версий Docker Compose
+- name: Проверка и обновление Makefile (если используется)
+  block:
+    - name: Проверка наличия Makefile
+      stat:
+        path: "{{ project_dir }}/Makefile"
+      register: makefile_check
+      tags: n8n-setup
+
+    - name: Чтение содержимого Makefile
+      slurp:
+        src: "{{ project_dir }}/Makefile"
+      register: makefile_content
+      when: makefile_check.stat.exists
+      tags: n8n-setup
+
+    - name: Обновление Makefile для поддержки обеих версий docker-compose
+      replace:
+        path: "{{ project_dir }}/Makefile"
+        regexp: 'docker-compose'
+        replace: "{{ docker_compose_cmd }}"
+      when: 
+        - makefile_check.stat.exists
+        - docker_compose_cmd == "docker compose"
+        - "'docker-compose' in (makefile_content.content | b64decode)"
+      tags: n8n-setup
+  when: makefile_check is defined and makefile_check.stat is defined
+  ignore_errors: yes
+
+# Создание простого запускающего скрипта, если make недоступен
+- name: Создание простого скрипта запуска docker-compose
+  copy:
+    dest: "{{ project_dir }}/run-compose.sh"
+    content: |
+      #!/bin/bash
+      cd "$(dirname "$0")"
+      {{ docker_compose_cmd }} up -d
+    mode: '0755'
+  tags: n8n-setup
+
+- name: Запуск проекта через make setup или docker-compose напрямую
+  block:
+    - name: Запуск через make setup (если доступен)
+      command: make setup
+      args:
+        chdir: "{{ project_dir }}"
+      become_user: "{{ ansible_user }}"
+      register: setup_result
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+      when: makefile_check.stat.exists
+      failed_when: false
+
+    - name: Запуск напрямую через docker-compose (если make fail)
+      shell: "{{ docker_compose_cmd }} up -d"
+      args:
+        chdir: "{{ project_dir }}"
+      become_user: "{{ ansible_user }}"
+      when: 
+        - setup_result is defined and setup_result.rc != 0
+        - not makefile_check.stat.exists
+  when: docker_check.rc != 0 or not api_key_file.stat.exists
   retries: 2
   delay: 30
-  until: setup_result is success
-  when: docker_check.rc != 0 or not api_key_file.stat.exists
   tags: n8n-setup
 
 - name: Проверка запущенных контейнеров

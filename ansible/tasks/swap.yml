@@ -6,36 +6,61 @@
     path: /swapfile
   register: swap_file
 
+- name: Проверка использования swap
+  shell: swapon --show | grep -q '/swapfile'
+  register: swap_in_use
+  changed_when: false
+  failed_when: false
+
 - name: Создание файла подкачки
-  command: "dd if=/dev/zero of=/swapfile bs=1M count={{ swap_size_mb }}"
+  command: "dd if=/dev/zero of=/swapfile bs=1M count={{ swap_size_mb }} status=progress"
+  args:
+    creates: /swapfile
   when: not swap_file.stat.exists
-  
+  register: swap_created
+  ignore_errors: yes
+
+- name: Повторная проверка наличия файла подкачки после создания
+  stat:
+    path: /swapfile
+  register: swap_file_after_create
+  when: not swap_file.stat.exists
+
 - name: Установка прав на файл подкачки
   file:
     path: /swapfile
     owner: root
     group: root
     mode: '0600'
-  when: not swap_file.stat.exists
+  when: swap_file.stat.exists or (swap_file_after_create is defined and swap_file_after_create.stat.exists)
 
 - name: Форматирование файла подкачки
   command: mkswap /swapfile
-  when: not swap_file.stat.exists
+  when: (swap_file.stat.exists or (swap_file_after_create is defined and swap_file_after_create.stat.exists)) and swap_in_use.rc != 0
+  register: swap_formatted
+  ignore_errors: yes
 
 - name: Включение файла подкачки
   command: swapon /swapfile
-  when: not swap_file.stat.exists
+  when: (swap_file.stat.exists or (swap_file_after_create is defined and swap_file_after_create.stat.exists)) and swap_in_use.rc != 0 and swap_formatted is not failed
   ignore_errors: yes
+
+- name: Проверка наличия записи в fstab
+  shell: grep -q '/swapfile none swap' /etc/fstab
+  register: swap_in_fstab
+  changed_when: false
+  failed_when: false
 
 - name: Добавление swap в fstab
   lineinfile:
     path: /etc/fstab
     line: "/swapfile none swap sw 0 0"
     state: present
-  when: not swap_file.stat.exists
+  when: (swap_file.stat.exists or (swap_file_after_create is defined and swap_file_after_create.stat.exists)) and swap_in_fstab.rc != 0
 
 - name: Настройка параметра swappiness
   sysctl:
     name: vm.swappiness
     value: '10'
     state: present
+  ignore_errors: yes

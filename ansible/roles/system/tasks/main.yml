@@ -1,0 +1,115 @@
+---
+# Роль System - основные задачи
+
+# Установка и настройка chrony
+- name: Установка chrony
+  apt:
+    name: chrony
+    state: present
+  tags: system, time
+  ignore_errors: yes
+
+# Проверка наличия различных служб NTP
+- name: Проверка доступных служб NTP
+  stat:
+    path: "/etc/init.d/{{ item }}"
+  register: ntp_services
+  loop: "{{ chrony_service_names }}"
+  changed_when: false
+  ignore_errors: yes
+  tags: system, time
+
+- name: Определение доступного сервиса NTP
+  set_fact:
+    chrony_service: "{{ item.item }}"
+  when: item.stat.exists | default(false)
+  loop: "{{ ntp_services.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: chrony_service_result
+  tags: system, time
+
+- name: Проверка службы chrony с systemd
+  shell: systemctl list-units --type=service | grep -E '(chrony|ntp)'
+  register: systemd_services
+  changed_when: false
+  failed_when: false
+  tags: system, time
+
+- name: Определение сервиса NTP из systemd
+  set_fact:
+    chrony_service: "{{ systemd_services.stdout_lines[0].split('.service')[0] }}"
+  when: chrony_service is not defined and systemd_services.stdout_lines | length > 0
+  tags: system, time
+
+# Альтернативная установка для CentOS/RHEL
+- name: Установка chrony (CentOS/RHEL)
+  yum:
+    name: chrony
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: system, time
+  ignore_errors: yes
+
+# Настройка chrony
+- name: Настройка chrony (если файл существует)
+  template:
+    src: chrony.conf.j2
+    dest: /etc/chrony/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart chrony
+  when: ansible_os_family == "Debian" and ansible_os_family is defined
+  tags: system, time
+  ignore_errors: yes
+
+- name: Настройка chrony (CentOS/RHEL если файл существует)
+  template:
+    src: chrony.conf.j2
+    dest: /etc/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart chrony
+  when: ansible_os_family == "RedHat" and ansible_os_family is defined
+  tags: system, time
+  ignore_errors: yes
+
+# Настройка временной зоны
+- name: Установка временной зоны
+  community.general.timezone:
+    name: "{{ timezone }}"
+  tags: system, time
+  ignore_errors: true
+      
+- name: Альтернативная установка временной зоны (если модуль не работает)
+  command: timedatectl set-timezone {{ timezone }}
+  when: ansible_service_mgr == 'systemd'
+  failed_when: false
+  tags: system, time
+  
+- name: Запуск и включение найденной службы NTP
+  service:
+    name: "{{ chrony_service | default('chrony') }}"
+    state: started
+    enabled: yes
+  when: chrony_service is defined
+  tags: system, time
+  ignore_errors: yes
+
+- name: Проверка статуса синхронизации времени
+  command: timedatectl status
+  register: timedatectl_status
+  changed_when: false
+  tags: system, time
+
+- name: Вывод информации о статусе времени
+  debug:
+    var: timedatectl_status.stdout_lines
+  tags: system, time
+
+# Swap настройки
+- name: Настройка swap
+  include_tasks: swap.yml
+  tags: system, swap

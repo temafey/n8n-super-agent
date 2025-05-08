@@ -8,31 +8,173 @@
   changed_when: false
   tags: docker
 
-- name: Добавление ключа GPG Docker
-  apt_key:
-    url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
-  when: docker_version_check.rc != 0
+- name: Проверка типа дистрибутива
+  debug:
+    msg: "Дистрибутив: {{ ansible_distribution }}, Версия: {{ ansible_distribution_version }}, Релиз: {{ ansible_distribution_release | default('не определен') }}"
   tags: docker
 
-- name: Добавление репозитория Docker
-  apt_repository:
-    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-    state: present
-  tags: docker
-
-- name: Установка Docker и Docker Compose
+# Установка необходимых зависимостей
+- name: Установка pip и других зависимостей
   apt:
     name:
-      - docker-ce
+      - python3-pip
+      - python3-setuptools
+      - python3-dev
+      - build-essential
+    state: present
+  when: ansible_os_family == "Debian"
+  ignore_errors: yes
+  tags: docker
+
+# Вариант 1: Установка docker.io (более простой способ, работает на большинстве дистрибутивов)
+- name: Установка Docker через пакет docker.io
+  apt:
+    name:
+      - docker.io
+      - docker-compose
+    state: present
+    update_cache: yes
+  register: docker_io_install
+  failed_when: false
+  when: ansible_os_family == "Debian" and docker_version_check.rc != 0
+  tags: docker
+  
+# Вариант 2: Более сложная установка с docker-ce если первый способ не сработал
+- name: Создание директории для ключей
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined
+  tags: docker
+
+- name: Скачивание ключа GPG Docker
+  get_url:
+    url: https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg
+    dest: /tmp/docker.gpg
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined
+  tags: docker
+
+- name: Установка ключа GPG Docker с выводом ошибок
+  shell: |
+    cat /tmp/docker.gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined
+  tags: docker
+  register: gpg_result
+  failed_when: false
+
+- name: Вывод ошибок GPG, если есть
+  debug:
+    var: gpg_result
+  when: gpg_result is defined and gpg_result.stderr | default('') != ''
+  tags: docker
+
+- name: Альтернативная установка ключа GPG Docker
+  apt_key:
+    url: https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg
+    state: present
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined 
+    - gpg_result is defined 
+    - gpg_result.rc != 0
+  tags: docker
+
+- name: Добавление репозитория Docker (Ubuntu/Debian)
+  apt_repository:
+    repo: "deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined 
+    - gpg_result is defined 
+    - gpg_result.rc == 0
+  tags: docker
+
+- name: Альтернативный способ добавления репозитория Docker
+  apt_repository:
+    repo: "deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined 
+    - gpg_result is defined 
+    - gpg_result.rc != 0
+  tags: docker
+
+- name: Обновление кэша apt после добавления репозитория
+  apt:
+    update_cache: yes
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined
+  tags: docker
+
+# Проверка доступности пакетов Docker
+- name: Проверка доступности пакетов Docker
+  shell: apt-cache policy docker-ce
+  register: docker_pkg_check
+  changed_when: false
+  failed_when: false
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined
+  tags: docker
+
+- name: Вывод информации о пакетах Docker
+  debug:
+    var: docker_pkg_check.stdout_lines
+  when: docker_pkg_check is defined
+  tags: docker
+
+# Установка Docker CE если доступно
+- name: Установка Docker CE и Docker Compose
+  apt:
+    name:
+      - docker-ce 
       - docker-ce-cli
       - containerd.io
       - docker-compose-plugin
     state: present
     update_cache: yes
+  register: docker_ce_install
+  failed_when: false
+  when: 
+    - ansible_os_family == "Debian" 
+    - docker_version_check.rc != 0 
+    - docker_io_install is defined 
+    - docker_io_install.failed is defined 
+    - docker_pkg_check is defined 
+    - "'Installed: (none)' in docker_pkg_check.stdout"
   notify: restart docker
   tags: docker
 
+# Общие задачи независимо от дистрибутива
 - name: Настройка параметров Docker daemon
   copy:
     dest: /etc/docker/daemon.json
@@ -51,6 +193,8 @@
     owner: root
     group: root
   notify: reload docker
+  when: docker_version_check.rc != 0
+  ignore_errors: yes
   tags: docker
 
 - name: Включение и запуск службы Docker
@@ -59,17 +203,80 @@
     state: started
     enabled: yes
   tags: docker
+  ignore_errors: yes
 
-- name: Установка docker-compose через pip
+# Проверка наличия pip3
+- name: Проверка наличия pip3
+  command: pip3 --version
+  register: pip3_check
+  failed_when: false
+  changed_when: false
+  tags: docker
+
+- name: Обновление и установка pip
+  block:
+    - name: Обновление pip
+      command: python3 -m pip install --upgrade pip
+      when: pip3_check.rc == 0
+      
+    - name: Альтернативный способ установки pip
+      shell: curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3 get-pip.py
+      args:
+        chdir: /tmp
+      when: pip3_check.rc != 0
+  when: ansible_os_family == "Debian"
+  ignore_errors: yes
+  tags: docker
+
+# Установка docker-compose с учетом наличия pip
+- name: Установка docker-compose через pip (при наличии pip)
   pip:
     name: docker-compose
     state: present
+  when: pip3_check.rc == 0
+  ignore_errors: yes
+  tags: docker
+
+# Альтернативная установка docker-compose напрямую через curl
+- name: Альтернативная установка docker-compose
+  block:
+    - name: Скачивание docker-compose
+      get_url:
+        url: https://github.com/docker/compose/releases/download/v2.22.0/docker-compose-{{ ansible_system | lower }}-{{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+      
+    - name: Создание символической ссылки
+      file:
+        src: /usr/local/bin/docker-compose
+        dest: /usr/bin/docker-compose
+        state: link
+  when: pip3_check.rc != 0 and docker_compose_check.rc != 0
+  ignore_errors: yes
+  tags: docker
+
+# Создание группы docker и добавление пользователя
+- name: Проверка существования группы docker
+  shell: getent group docker || echo "group not exists"
+  register: docker_group_check
+  changed_when: false
+  failed_when: false
   tags: docker
 
 - name: Создание группы docker
   group:
     name: docker
     state: present
+  register: docker_group_result
+  ignore_errors: yes
+  tags: docker
+
+# Проверяем результат создания группы docker
+- name: Повторная проверка существования группы docker после создания
+  shell: getent group docker || echo "group still not exists"
+  register: docker_group_recheck
+  changed_when: false
+  failed_when: false
   tags: docker
 
 - name: Добавление пользователя в группу docker
@@ -77,8 +284,17 @@
     name: "{{ ansible_user }}"
     groups: docker
     append: yes
+  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout
+  ignore_errors: yes
   tags: docker
 
-- name: Применение изменений группы docker (перезагрузка только если необходимо)
+- name: Альтернативное добавление в группу docker через usermod
+  shell: usermod -aG docker {{ ansible_user }}
+  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout and docker_group_check.stdout_lines | length > 0
+  ignore_errors: yes
+  tags: docker
+
+- name: Применение изменений группы docker
   meta: reset_connection
+  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout
   tags: docker

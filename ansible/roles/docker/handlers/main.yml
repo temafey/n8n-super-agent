@@ -5,8 +5,18 @@
   service:
     name: docker
     state: restarted
+  ignore_errors: yes
 
 - name: reload docker
   systemd:
     name: docker
     daemon_reload: yes
+  ignore_errors: yes
+  when: ansible_service_mgr == 'systemd'
+  
+- name: reload docker (non-systemd)
+  service:
+    name: docker
+    state: reloaded
+  ignore_errors: yes
+  when: ansible_service_mgr != 'systemd'

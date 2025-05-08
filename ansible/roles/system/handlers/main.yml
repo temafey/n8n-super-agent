@@ -1,0 +1,22 @@
+---
+# Обработчики для роли system
+
+- name: restart chrony
+  service:
+    name: "{{ chrony_service | default('chrony') }}"
+    state: restarted
+  ignore_errors: yes
+  
+- name: restart chronyd
+  service:
+    name: chronyd
+    state: restarted
+  ignore_errors: yes
+  when: chrony_service is not defined
+  
+- name: restart ntp
+  service:
+    name: ntp
+    state: restarted
+  ignore_errors: yes
+  when: chrony_service is not defined

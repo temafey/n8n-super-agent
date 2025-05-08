@@ -82,6 +82,28 @@
   when: enable_firewall
   tags: security
 
+# Проверка статуса fail2ban
+- name: Проверка установки fail2ban
+  command: dpkg -l fail2ban
+  register: fail2ban_installed
+  changed_when: false
+  failed_when: false
+  tags: security
+
+- name: Проверка статуса службы fail2ban
+  shell: systemctl list-units --type=service | grep -E '(fail2ban)'
+  register: fail2ban_service_check
+  changed_when: false
+  failed_when: false
+  when: fail2ban_installed.rc == 0
+  tags: security
+
+- name: Сохранение точного имени службы fail2ban
+  set_fact:
+    fail2ban_service_name: "{{ fail2ban_service_check.stdout_lines[0].split('.service')[0] if fail2ban_service_check.stdout_lines is defined and fail2ban_service_check.stdout_lines | length > 0 else 'fail2ban' }}"
+  when: fail2ban_service_check is defined
+  tags: security
+
 - name: Настройка fail2ban
   copy:
     dest: /etc/fail2ban/jail.local
@@ -109,8 +131,17 @@
       filter = nginx-http-auth
       port = http,https
       logpath = /var/log/nginx/error.log
-  when: enable_fail2ban
-  notify: restart fail2ban
+  when: enable_fail2ban | bool
+  register: fail2ban_configured
+  tags: security
+
+- name: Перезапуск fail2ban вручную (c найденным именем службы)
+  service:
+    name: "{{ fail2ban_service_name }}"
+    state: restarted
+    enabled: yes
+  when: enable_fail2ban | bool and fail2ban_service_name is defined and fail2ban_configured is changed
+  ignore_errors: yes
   tags: security
 
 - name: Настройка более безопасных параметров SSH
