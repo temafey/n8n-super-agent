@@ -1,20 +1,27 @@
-# Серверы NTP
-{% for server in ntp_servers | default(['0.pool.ntp.org', '1.pool.ntp.org', '2.pool.ntp.org', '3.pool.ntp.org']) %}
+# Конфигурация chrony, управляемая Ansible
+
+# Список серверов NTP
+{% for server in ntp_servers %}
 server {{ server }} iburst
 {% endfor %}
 
-# Дрифт-файл для сохранения информации о частоте системных часов
-driftfile /var/lib/chrony/chrony.drift
+# Смещение для локального времени
+driftfile /var/lib/chrony/drift
 
-# Разрешить системным часам изменяться плавно
-makestep 1.0 3
+# Меры безопасности и разрешенные подключения
+{% for network in chrony_allow_networks %}
+allow {{ network }}
+{% endfor %}
 
-# Включить логирование
+# Включение локального сервера времени
+local stratum 10
+
+# Ведение журнала
 logdir /var/log/chrony
-log tracking measurements statistics
+log measurements statistics tracking
 
-# Разрешить синхронизацию в локальной сети
-allow 127.0.0.1
-
-# Использовать временную зону системы
+# Синхронизируйте RTC системы при запуске и перезагрузке
 rtcsync
+
+# Макросы
+makestep 1.0 3

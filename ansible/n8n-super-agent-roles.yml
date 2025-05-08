@@ -45,11 +45,31 @@
         state: present
       tags: always
 
-  roles:
-    # Добавляем роль system для настройки времени и других системных параметров
-    - role: system
+    - name: Установка временной зоны
+      community.general.timezone:
+        name: "{{ timezone }}"
+      tags: system
+      ignore_errors: true
+      
+    - name: Альтернативная установка временной зоны (если модуль не работает)
+      command: timedatectl set-timezone {{ timezone }}
+      when: ansible_service_mgr == 'systemd'
+      failed_when: false
       tags: system
       
+    - name: Запуск и включение chrony
+      service:
+        name: chrony
+        state: started
+        enabled: yes
+      ignore_errors: yes
+      tags: system
+
+    - name: Настройка swap
+      include_tasks: "{{ playbook_dir }}/tasks/swap.yml"
+      tags: system
+
+  roles:      
     - role: docker
       tags: docker
       

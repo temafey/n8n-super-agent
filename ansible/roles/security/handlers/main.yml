@@ -8,10 +8,10 @@
 
 - name: restart fail2ban
   service:
-    name: "{{ fail2ban_service_name | default('fail2ban') }}"
+    name: "fail2ban"
     state: restarted
   ignore_errors: yes
-  when: fail2ban_service_name is defined or fail2ban_installed.rc == 0
+  when: fail2ban_installed.rc == 0
 
 - name: reload ufw
   command: ufw reload
