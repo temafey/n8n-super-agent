@@ -12,6 +12,7 @@ PLAYBOOK = n8n-super-agent.yml
 ROLES_PLAYBOOK = n8n-super-agent-roles.yml
 VAULT_FILE = group_vars/n8n_servers/vault.yml
 VAULT_PASSWORD_FILE = .vault_password
+SETUP_ARGS ?= --skip-certs
 
 .PHONY: help setup lint syntax-check check dry-run apply roles vault encrypt decrypt edit-vault tags clean install requirements
 
@@ -44,6 +45,7 @@ help:
 	@echo "Используйте INVENTORY=path/to/inventory для указания другого инвентаря"
 	@echo "Используйте ASK_PASS=--ask-become-pass для запроса sudo пароля"
 	@echo "Используйте TARGET=host1,host2 для ограничения хостов"
+	@echo "Используйте SETUP_ARGS=\"\" для генерации сертификатов (по умолчанию: --skip-certs)"
 
 # Установка зависимостей и подготовка окружения
 setup: requirements

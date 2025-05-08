@@ -554,21 +554,63 @@
       ignore_errors: yes
 
     ### 6. Клонирование и настройка проекта ###
-    - name: Создание директории проекта
+    - name: Проверка переменной project_dir
+      debug:
+        msg: "Значение project_dir: {{ project_dir }}"
+        
+    - name: Создание директории проекта (рекурсивно)
       file:
         path: "{{ project_dir }}"
         state: directory
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0755'
+        recurse: yes
+      register: dir_creation
+      
+    - name: Вывод результата создания директории
+      debug:
+        var: dir_creation
 
+    - name: Проверка переменных для клонирования
+      debug:
+        msg: "Git repo: {{ git_repo }}, branch: {{ git_branch }}"
+        
     - name: Клонирование репозитория проекта
       git:
         repo: "{{ git_repo }}"
         dest: "{{ project_dir }}"
         version: "{{ git_branch }}"
         force: yes
+        accept_hostkey: yes
       become_user: "{{ ansible_user }}"
+      register: git_clone_result
+      failed_when: false
+      
+    - name: Вывод результата клонирования
+      debug:
+        var: git_clone_result
+        
+    - name: Альтернативное клонирование в случае ошибки
+      shell: |
+        if [ ! -d "{{ project_dir }}/.git" ]; then
+          git clone "{{ git_repo }}" "{{ project_dir }}"
+          cd "{{ project_dir }}"
+          git checkout "{{ git_branch }}"
+          echo "Репозиторий успешно клонирован вручную"
+        else
+          echo "Репозиторий уже существует"
+        fi
+      args:
+        executable: /bin/bash
+      become_user: "{{ ansible_user }}"
+      register: manual_clone_result
+      when: git_clone_result is failed
+      
+    - name: Вывод результата ручного клонирования
+      debug:
+        var: manual_clone_result
+      when: manual_clone_result is defined
 
     - name: Создание необходимых директорий
       file:
@@ -851,17 +893,60 @@
       when: not import_script_exists.stat.exists
 
     ### 7. Запуск проекта ###
-    - name: Запуск проекта через make setup
-      command: make setup
+    - name: Проверка наличия файла Makefile
+      stat:
+        path: "{{ project_dir }}/Makefile"
+      register: makefile_exists
+      
+    - name: Вывод информации о Makefile
+      debug:
+        var: makefile_exists
+        
+    - name: Проверка содержимого директории проекта
+      shell: ls -la "{{ project_dir }}"
+      register: project_contents
+      ignore_errors: yes
+      
+    - name: Вывод содержимого директории
+      debug:
+        var: project_contents.stdout_lines
+
+    - name: Добавление необходимых прав доступа к директории проекта
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+        recurse: yes
+      register: permissions_result
+      
+    - name: Вывод результата установки прав доступа
+      debug:
+        var: permissions_result
+
+    - name: Запуск проекта с помощью скрипта setup.sh напрямую
+      shell: |
+        cd "{{ project_dir }}" 
+        ls -la
+        if [ -f setup.sh ]; then
+          chmod +x setup.sh
+          ./setup.sh
+        elif [ -f Makefile ]; then
+          make setup
+        else
+          echo "Не найдены файлы setup.sh или Makefile"
+          if [ -f docker-compose.yml ]; then
+            docker-compose up -d
+          fi
+        fi
       args:
-        chdir: "{{ project_dir }}"
+        executable: /bin/bash
       become_user: "{{ ansible_user }}"
       register: setup_result
       environment:
         PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
-      retries: 2
-      delay: 30
-      until: setup_result is success
+      ignore_errors: yes
 
     - name: Проверка запущенных контейнеров
       command: docker ps
@@ -877,6 +962,10 @@
       become_user: "{{ ansible_user }}"
       register: check_result
       ignore_errors: yes
+
+    - name: Вывод результатов запуска setup
+      debug:
+        var: setup_result
 
     - name: Вывод результатов проверки системы
       debug:

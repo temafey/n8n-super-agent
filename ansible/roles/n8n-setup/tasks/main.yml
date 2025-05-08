@@ -45,6 +45,35 @@
     mode: '0600'
   tags: n8n-setup
 
+# Проверка наличия сертификатов в ansible/ssl
+- name: Проверка наличия сертификата Cloudflare в ansible/ssl
+  stat:
+    path: "{{ playbook_dir }}/ssl/microcore.cc.pem"
+  register: cloudflare_cert_stat
+  tags: n8n-setup
+
+- name: Проверка наличия приватного ключа Cloudflare в ansible/ssl
+  stat:
+    path: "{{ playbook_dir }}/ssl/microcore.cc.key"
+  register: cloudflare_key_stat
+  tags: n8n-setup
+
+- name: Копирование существующего сертификата Cloudflare для NGINX
+  copy:
+    src: "{{ playbook_dir }}/ssl/microcore.cc.pem"
+    dest: "{{ project_dir }}/nginx/certs/server.crt"
+    mode: '0644'
+  when: cloudflare_cert_stat.stat.exists
+  tags: n8n-setup
+
+- name: Копирование существующего ключа Cloudflare для NGINX
+  copy:
+    src: "{{ playbook_dir }}/ssl/microcore.cc.key"
+    dest: "{{ project_dir }}/nginx/certs/server.key"
+    mode: '0600'
+  when: cloudflare_key_stat.stat.exists
+  tags: n8n-setup
+
 - name: Создание SSL сертификатов, если они еще не существуют
   shell: |
     if [ ! -f {{ project_dir }}/nginx/certs/server.crt ]; then
@@ -56,6 +85,7 @@
   args:
     executable: /bin/bash
     creates: "{{ project_dir }}/nginx/certs/server.crt"
+  when: not cloudflare_cert_stat.stat.exists or not cloudflare_key_stat.stat.exists
   tags: n8n-setup
 
 - name: Проверка успешного клонирования репозитория
@@ -104,6 +134,62 @@
   when: script_checks.results[1].stat.exists == false
   tags: n8n-setup
 
+- name: Создание модифицированного скрипта setup.sh с пропуском генерации сертификатов
+  copy:
+    dest: "{{ project_dir }}/setup.sh"
+    content: |
+      #!/bin/bash
+
+      # Обработка аргументов командной строки
+      SKIP_CERTS=false
+      for arg in "$@"; do
+        case $arg in
+          --skip-certs)
+            SKIP_CERTS=true
+            shift
+            ;;
+          *)
+            shift
+            ;;
+        esac
+      done
+
+      echo "Инициализация проекта n8n-super-agent..."
+
+      # Создание необходимых директорий
+      mkdir -p logs/n8n logs/zep logs/postgres logs/postgres-zep logs/nginx logs/redis logs/weaviate nginx/certs backups
+
+      # Проверка наличия сертификатов в ansible/ssl
+      if [ -f ansible/ssl/microcore.cc.pem ] && [ -f ansible/ssl/microcore.cc.key ]; then
+        echo "Используются существующие сертификаты из ansible/ssl"
+        mkdir -p ./nginx/certs
+        cp ansible/ssl/microcore.cc.pem ./nginx/certs/server.crt
+        cp ansible/ssl/microcore.cc.key ./nginx/certs/server.key
+        chmod 644 ./nginx/certs/server.crt
+        chmod 600 ./nginx/certs/server.key
+        SKIP_CERTS=true
+      fi
+
+      # Создание самоподписанного сертификата, если он не существует и не указан флаг skip-certs
+      if [ "$SKIP_CERTS" = false ] && [ ! -f nginx/certs/server.crt ]; then
+        mkdir -p nginx/certs
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout nginx/certs/server.key -out nginx/certs/server.crt \
+          -subj "/C=RU/ST=State/L=City/O=Organization/CN=localhost"
+        echo "Самоподписанный SSL сертификат создан"
+      fi
+
+      # Запуск контейнеров
+      docker-compose up -d
+
+      echo "Инициализация завершена."
+      echo "Система доступна по адресу https://localhost"
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  when: script_checks.results[0].stat.exists == false or cloudflare_cert_stat.stat.exists
+  tags: n8n-setup
+
 - name: Создание других скриптов, если они отсутствуют
   copy:
     dest: "{{ project_dir }}/{{ item.path }}"
@@ -112,29 +198,6 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
   loop:
-    - { path: "setup.sh", content: |
-        #!/bin/bash
-
-        echo "Инициализация проекта n8n-super-agent..."
-
-        # Создание необходимых директорий
-        mkdir -p logs/n8n logs/zep logs/postgres logs/postgres-zep logs/nginx logs/redis logs/weaviate nginx/certs backups
-
-        # Создание самоподписанного сертификата, если он не существует
-        if [ ! -f nginx/certs/server.crt ]; then
-          mkdir -p nginx/certs
-          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout nginx/certs/server.key -out nginx/certs/server.crt \
-            -subj "/C=RU/ST=State/L=City/O=Organization/CN=localhost"
-          echo "Самоподписанный SSL сертификат создан"
-        fi
-
-        # Запуск контейнеров
-        docker-compose up -d
-
-        echo "Инициализация завершена."
-        echo "Система доступна по адресу https://localhost"
-      }
     - { path: "fix-issues.sh", content: |
         #!/bin/bash
 
@@ -360,6 +423,14 @@
         - docker_compose_cmd == "docker compose"
         - "'docker-compose' in (makefile_content.content | b64decode)"
       tags: n8n-setup
+
+    - name: Обновление Makefile для передачи аргументов в setup.sh
+      replace:
+        path: "{{ project_dir }}/Makefile"
+        regexp: '\./setup\.sh(\s*)$'
+        replace: './setup.sh $(SETUP_ARGS)\1'
+      when: makefile_check.stat.exists
+      tags: n8n-setup
   when: makefile_check is defined and makefile_check.stat is defined
   ignore_errors: yes
 
@@ -376,6 +447,19 @@
 
 - name: Запуск проекта через make setup или docker-compose напрямую
   block:
+    - name: Запуск через make setup с пропуском генерации сертификатов (если доступен)
+      command: make setup SETUP_ARGS="--skip-certs"
+      args:
+        chdir: "{{ project_dir }}"
+      become_user: "{{ ansible_user }}"
+      register: setup_result
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+      when: 
+        - makefile_check.stat.exists
+        - cloudflare_cert_stat.stat.exists and cloudflare_key_stat.stat.exists
+      failed_when: false
+
     - name: Запуск через make setup (если доступен)
       command: make setup
       args:
@@ -384,7 +468,9 @@
       register: setup_result
       environment:
         PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
-      when: makefile_check.stat.exists
+      when: 
+        - makefile_check.stat.exists
+        - not (cloudflare_cert_stat.stat.exists and cloudflare_key_stat.stat.exists)
       failed_when: false
 
     - name: Запуск напрямую через docker-compose (если make fail)

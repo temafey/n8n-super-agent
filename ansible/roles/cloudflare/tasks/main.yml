@@ -17,6 +17,25 @@
         (cloudflare_api_token is not defined or cloudflare_api_token | length == 0)
   tags: cloudflare
 
+# Проверка наличия сертификатов в ansible/ssl
+- name: Проверка наличия сертификата Cloudflare в ansible/ssl
+  stat:
+    path: "{{ playbook_dir }}/ssl/microcore.cc.pem"
+  register: cloudflare_cert_stat
+  tags: cloudflare
+
+- name: Проверка наличия приватного ключа Cloudflare в ansible/ssl
+  stat:
+    path: "{{ playbook_dir }}/ssl/microcore.cc.key"
+  register: cloudflare_key_stat
+  tags: cloudflare
+
+- name: Вывод информации о существующих сертификатах
+  debug:
+    msg: "Найдены существующие сертификаты Cloudflare. Они будут использованы вместо генерации новых."
+  when: cloudflare_cert_stat.stat.exists and cloudflare_key_stat.stat.exists
+  tags: cloudflare
+
 - name: Установка зависимостей для Python
   apt:
     name:
@@ -43,6 +62,39 @@
   loop:
     - "{{ project_dir }}/ssl/cloudflare"
     - "{{ project_dir }}/ssl/private"
+  tags: cloudflare
+
+# Копирование существующих сертификатов, если они есть
+- name: Копирование существующего сертификата из ansible/ssl
+  copy:
+    src: "{{ playbook_dir }}/ssl/microcore.cc.pem"
+    dest: "{{ project_dir }}/ssl/cloudflare/origin-cert.pem"
+    mode: '0644'
+  when: cloudflare_cert_stat.stat.exists
+  tags: cloudflare
+
+- name: Копирование существующего ключа из ansible/ssl
+  copy:
+    src: "{{ playbook_dir }}/ssl/microcore.cc.key"
+    dest: "{{ project_dir }}/ssl/private/origin-cert.key"
+    mode: '0600'
+  when: cloudflare_key_stat.stat.exists
+  tags: cloudflare
+
+- name: Копирование существующего сертификата для NGINX
+  copy:
+    src: "{{ playbook_dir }}/ssl/microcore.cc.pem"
+    dest: "{{ project_dir }}/nginx/certs/server.crt"
+    mode: '0644'
+  when: cloudflare_cert_stat.stat.exists
+  tags: cloudflare
+
+- name: Копирование существующего ключа для NGINX
+  copy:
+    src: "{{ playbook_dir }}/ssl/microcore.cc.key"
+    dest: "{{ project_dir }}/nginx/certs/server.key"
+    mode: '0600'
+  when: cloudflare_key_stat.stat.exists
   tags: cloudflare
 
 - name: Получение информации о зоне Cloudflare
@@ -279,7 +331,7 @@
       with_items:
         - { content: "{{ origin_cert_response.json.result.certificate }}", dest: "{{ project_dir }}/nginx/certs/server.crt", mode: '0644' }
         - { content: "{{ lookup('file', '{{ project_dir }}/ssl/private/origin-cert.key') }}", dest: "{{ project_dir }}/nginx/certs/server.key", mode: '0600' }
-  when: cloudflare_ssl_mode == "full_strict"
+  when: cloudflare_ssl_mode == "full_strict" and not cloudflare_cert_stat.stat.exists and not cloudflare_key_stat.stat.exists
   tags: cloudflare
 
 # Расширенные настройки WAF на Cloudflare (firewall rules)
