@@ -291,26 +291,10 @@
   ignore_errors: yes
   tags: docker
 
-# Создание группы docker и добавление пользователя
-- name: Проверка существования группы docker
-  shell: getent group docker || echo "group not exists"
-  register: docker_group_check
-  changed_when: false
-  failed_when: false
-  tags: docker
-
-- name: Создание группы docker
-  group:
-    name: docker
-    state: present
-  register: docker_group_result
-  ignore_errors: yes
-  tags: docker
-
-# Проверяем результат создания группы docker
-- name: Повторная проверка существования группы docker после создания
-  shell: getent group docker || echo "group still not exists"
-  register: docker_group_recheck
+# Добавление пользователя в группу docker
+- name: Проверка членства пользователя в группе docker
+  shell: "groups {{ ansible_user }} | grep -q 'docker'"
+  register: docker_group_membership
   changed_when: false
   failed_when: false
   tags: docker
@@ -320,17 +304,81 @@
     name: "{{ ansible_user }}"
     groups: docker
     append: yes
-  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout
-  ignore_errors: yes
+  register: docker_group_add
+  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout and docker_group_membership.rc != 0
   tags: docker
 
 - name: Альтернативное добавление в группу docker через usermod
   shell: usermod -aG docker {{ ansible_user }}
-  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout and docker_group_check.stdout_lines | length > 0
+  register: docker_usermod_add
+  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout and docker_group_membership.rc != 0 and (docker_group_add is defined and docker_group_add.failed | default(true))
+  failed_when: false  # Игнорируем ошибки, чтобы не прерывать плейбук
+  tags: docker
+
+- name: Проверка прав на docker.sock
+  file:
+    path: /var/run/docker.sock
+    mode: '0666'
+  register: docker_sock_perm
   ignore_errors: yes
   tags: docker
 
-- name: Применение изменений группы docker
-  meta: reset_connection
-  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout
+- name: Создание systemd оверрайда для установки прав на сокет docker.sock при запуске
+  block:
+    - name: Создание директории для systemd override
+      file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        mode: '0755'
+    
+    - name: Создание файла override.conf
+      copy:
+        dest: /etc/systemd/system/docker.service.d/override.conf
+        content: |
+          [Service]
+          ExecStartPost=/bin/chmod 666 /var/run/docker.sock
+        mode: '0644'
+      notify: systemd daemon-reload
+  when: docker_sock_perm is failed
+  tags: docker
+
+- name: Создание команды для newgrp docker
+  copy:
+    dest: "/home/{{ ansible_user }}/.docker-newgrp.sh"
+    content: |
+      #!/bin/bash
+      echo "Applying docker group permissions..."
+      if ! groups | grep -q docker; then
+        exec newgrp docker
+      fi
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  when: docker_group_add.changed is defined and docker_group_add.changed or docker_usermod_add.changed is defined and docker_usermod_add.changed
+  tags: docker
+
+- name: Добавление вызова docker-newgrp.sh в .bashrc
+  lineinfile:
+    path: "/home/{{ ansible_user }}/.bashrc"
+    line: "# Добавление группы docker: if [ -f ~/.docker-newgrp.sh ]; then . ~/.docker-newgrp.sh; fi"
+    state: present
+  when: docker_group_add.changed is defined and docker_group_add.changed or docker_usermod_add.changed is defined and docker_usermod_add.changed
+  tags: docker
+
+- name: Вывод инструкции для пользователя
+  debug:
+    msg: 
+      - "Пользователь добавлен в группу docker. Для применения изменений необходимо:"
+      - "1. Выполнить команду: newgrp docker"
+      - "2. Или перезапустить сессию командой: su - {{ ansible_user }}"
+      - "3. Или перезагрузить сервер"
+  when: docker_group_add.changed is defined and docker_group_add.changed or docker_usermod_add.changed is defined and docker_usermod_add.changed
+  tags: docker
+
+# Перезапуск Docker если были изменения в правах
+- name: Перезапуск Docker для применения изменений прав на сокет
+  service:
+    name: docker
+    state: restarted
+  when: docker_sock_perm is failed or (docker_group_add.changed is defined and docker_group_add.changed) or (docker_usermod_add.changed is defined and docker_usermod_add.changed)
   tags: docker
