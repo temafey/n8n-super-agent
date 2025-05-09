@@ -228,13 +228,46 @@
   ignore_errors: yes
   tags: docker
 
-# Установка docker-compose с учетом наличия pip
-- name: Установка docker-compose через pip (при наличии pip)
-  pip:
+# Установка docker-compose через apt
+- name: Проверка доступности docker-compose через apt
+  shell: apt-cache policy docker-compose
+  register: docker_compose_apt_check
+  changed_when: false
+  failed_when: false
+  tags: docker
+
+- name: Установка docker-compose через apt
+  apt:
     name: docker-compose
     state: present
-  when: pip3_check.rc == 0
+    update_cache: yes
+  when: ansible_os_family == "Debian" and (docker_compose_apt_check.rc == 0) and ('(none)' not in docker_compose_apt_check.stdout)
   ignore_errors: yes
+  tags: docker
+  
+- name: Альтернативная установка docker-compose через pipx
+  block:
+    - name: Установка pipx
+      apt:
+        name: pipx
+        state: present
+        update_cache: yes
+    
+    - name: Установка docker-compose через pipx
+      shell: pipx install docker-compose
+  when: 
+    - ansible_os_family == "Debian" 
+    - pip3_check.rc == 0
+    - (docker_compose_apt_check.rc != 0) or ('(none)' in docker_compose_apt_check.stdout)
+  ignore_errors: yes
+  tags: docker
+
+# Проверка наличия docker-compose
+- name: Проверка наличия docker-compose
+  command: which docker-compose
+  register: docker_compose_check
+  failed_when: false
+  changed_when: false
   tags: docker
 
 # Альтернативная установка docker-compose напрямую через curl
@@ -251,7 +284,10 @@
         src: /usr/local/bin/docker-compose
         dest: /usr/bin/docker-compose
         state: link
-  when: pip3_check.rc != 0 and docker_compose_check.rc != 0
+  when: 
+    - docker_compose_check.rc != 0 
+    - (docker_compose_apt_check.rc != 0 or '(none)' in docker_compose_apt_check.stdout)
+    - ansible_os_family == "Debian"
   ignore_errors: yes
   tags: docker
 

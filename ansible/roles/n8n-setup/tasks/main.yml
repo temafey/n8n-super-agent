@@ -134,60 +134,13 @@
   when: script_checks.results[1].stat.exists == false
   tags: n8n-setup
 
-- name: Создание модифицированного скрипта setup.sh с пропуском генерации сертификатов
+- name: Копирование улучшенного скрипта setup.sh
   copy:
+    src: setup.sh
     dest: "{{ project_dir }}/setup.sh"
-    content: |
-      #!/bin/bash
-
-      # Обработка аргументов командной строки
-      SKIP_CERTS=false
-      for arg in "$@"; do
-        case $arg in
-          --skip-certs)
-            SKIP_CERTS=true
-            shift
-            ;;
-          *)
-            shift
-            ;;
-        esac
-      done
-
-      echo "Инициализация проекта n8n-super-agent..."
-
-      # Создание необходимых директорий
-      mkdir -p logs/n8n logs/zep logs/postgres logs/postgres-zep logs/nginx logs/redis logs/weaviate nginx/certs backups
-
-      # Проверка наличия сертификатов в ansible/ssl
-      if [ -f ansible/ssl/microcore.cc.pem ] && [ -f ansible/ssl/microcore.cc.key ]; then
-        echo "Используются существующие сертификаты из ansible/ssl"
-        mkdir -p ./nginx/certs
-        cp ansible/ssl/microcore.cc.pem ./nginx/certs/server.crt
-        cp ansible/ssl/microcore.cc.key ./nginx/certs/server.key
-        chmod 644 ./nginx/certs/server.crt
-        chmod 600 ./nginx/certs/server.key
-        SKIP_CERTS=true
-      fi
-
-      # Создание самоподписанного сертификата, если он не существует и не указан флаг skip-certs
-      if [ "$SKIP_CERTS" = false ] && [ ! -f nginx/certs/server.crt ]; then
-        mkdir -p nginx/certs
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-          -keyout nginx/certs/server.key -out nginx/certs/server.crt \
-          -subj "/C=RU/ST=State/L=City/O=Organization/CN=localhost"
-        echo "Самоподписанный SSL сертификат создан"
-      fi
-
-      # Запуск контейнеров
-      docker-compose up -d
-
-      echo "Инициализация завершена."
-      echo "Система доступна по адресу https://localhost"
     mode: '0755'
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-  when: script_checks.results[0].stat.exists == false or cloudflare_cert_stat.stat.exists
   tags: n8n-setup
 
 - name: Создание других скриптов, если они отсутствуют
@@ -445,22 +398,9 @@
     mode: '0755'
   tags: n8n-setup
 
-- name: Запуск проекта через make setup или docker-compose напрямую
+- name: Запуск проекта через make setup или setup.sh напрямую
   block:
-    - name: Запуск через make setup с пропуском генерации сертификатов (если доступен)
-      command: make setup SETUP_ARGS="--skip-certs"
-      args:
-        chdir: "{{ project_dir }}"
-      become_user: "{{ ansible_user }}"
-      register: setup_result
-      environment:
-        PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
-      when: 
-        - makefile_check.stat.exists
-        - cloudflare_cert_stat.stat.exists and cloudflare_key_stat.stat.exists
-      failed_when: false
-
-    - name: Запуск через make setup (если доступен)
+    - name: Запуск через make setup (если Makefile доступен)
       command: make setup
       args:
         chdir: "{{ project_dir }}"
@@ -468,19 +408,15 @@
       register: setup_result
       environment:
         PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
-      when: 
-        - makefile_check.stat.exists
-        - not (cloudflare_cert_stat.stat.exists and cloudflare_key_stat.stat.exists)
+      when: makefile_check.stat.exists
       failed_when: false
 
-    - name: Запуск напрямую через docker-compose (если make fail)
-      shell: "{{ docker_compose_cmd }} up -d"
+    - name: Запуск напрямую через setup.sh (если make недоступен или возникла ошибка)
+      command: "./setup.sh {{ '--skip-certs' if cloudflare_cert_stat.stat.exists and cloudflare_key_stat.stat.exists else '' }}"
       args:
         chdir: "{{ project_dir }}"
       become_user: "{{ ansible_user }}"
-      when: 
-        - setup_result is defined and setup_result.rc != 0
-        - not makefile_check.stat.exists
+      when: not makefile_check.stat.exists or (setup_result is defined and setup_result.rc != 0)
   when: docker_check.rc != 0 or not api_key_file.stat.exists
   retries: 2
   delay: 30
