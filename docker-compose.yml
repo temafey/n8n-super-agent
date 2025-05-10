@@ -4,7 +4,7 @@ services:
     image: nginx:alpine
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health", "-o", "/dev/null", "-s", "-w", "\'%{http_code}\'"]
+      test: ["CMD", "curl", "-f", "http://localhost/health", "-o", "/dev/null", "-s", "-w", "%{http_code}"]
       interval: 30s
       timeout: 10s
       retries: 3
