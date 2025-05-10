@@ -35,8 +35,7 @@ REDIS_CONTAINER = $(shell $(CONTAINER_CMD) ps -qf "name=$(CONTAINER_PREFIX)redis
 NGINX_CONTAINER = $(shell $(CONTAINER_CMD) ps -qf "name=$(CONTAINER_PREFIX)nginx")
 
 # Список всех целей
-.PHONY: help setup start stop restart status stats logs fix check backup restore clean reset update dev test shell \
-        n8n-logs redis-logs postgres-logs weaviate-logs zep-logs nginx-logs all-logs reset-db backup-db
+.PHONY: help setup start stop restart status stats fix check backup restore clean reset update dev test shell
 
 # Справка по командам
 help:
@@ -76,28 +75,6 @@ help:
 	@echo "  $(YELLOW)make weaviate-logs$(NC)  - Логи Weaviate"
 	@echo "  $(YELLOW)make zep-logs$(NC)       - Логи Zep"
 	@echo "  $(YELLOW)make nginx-logs$(NC)     - Логи NGINX"
-
-# Работа с логами
-logs:
-	@$(COMPOSE_CMD) -f $(COMPOSE_FILE) logs --tail=100 -f
-
-n8n-logs:
-	@$(COMPOSE_CMD) -f $(COMPOSE_FILE) logs --tail=100 -f n8n
-
-redis-logs:
-	@$(COMPOSE_CMD) -f $(COMPOSE_FILE) logs --tail=100 -f redis
-
-postgres-logs:
-	@$(COMPOSE_CMD) -f $(COMPOSE_FILE) logs --tail=100 -f postgres
-
-weaviate-logs:
-	@$(COMPOSE_CMD) -f $(COMPOSE_FILE) logs --tail=100 -f weaviate
-
-zep-logs:
-	@$(COMPOSE_CMD) -f $(COMPOSE_FILE) logs --tail=100 -f zep
-
-nginx-logs:
-	@$(COMPOSE_CMD) -f $(COMPOSE_FILE) logs --tail=100 -f nginx
 
 # Обслуживание
 fix:

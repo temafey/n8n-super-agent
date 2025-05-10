@@ -7,6 +7,10 @@ COMPOSE_CMD = docker-compose -f $(COMPOSE_FILE)
 N8N_CONTAINER = $$(docker ps -qf "name=n8n-super-agent_n8n")
 POSTGRES_CONTAINER = $$(docker ps -qf "name=n8n-super-agent_postgres")
 
+# Добавляем .PHONY для всех целей
+.PHONY: setup start stop restart build up rebuild-service rebuild-all pull-build status stats logs backup restore clean reset update dev test shell \
+        n8n-logs redis-logs postgres-logs weaviate-logs zep-logs nginx-logs all-logs reset-db backup-db
+
 # Инициализация проекта
 setup:
 	@echo "${GREEN}Инициализация проекта n8n-супер-агент с Docker...${NC}"
