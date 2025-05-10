@@ -213,17 +213,16 @@
   changed_when: false
   tags: docker
 
-- name: Обновление и установка pip
-  block:
-    - name: Обновление pip
-      command: python3 -m pip install --upgrade pip
-      when: pip3_check.rc == 0
-      
-    - name: Альтернативный способ установки pip
-      shell: curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3 get-pip.py
-      args:
-        chdir: /tmp
-      when: pip3_check.rc != 0
+- name: Установка python пакетов через apt
+  apt:
+    name:
+      - python3-pip
+      - python3-setuptools
+      - python3-venv
+      - python3-docker
+      - pipx
+    state: present
+    update_cache: yes
   when: ansible_os_family == "Debian"
   ignore_errors: yes
   tags: docker
@@ -246,19 +245,27 @@
   tags: docker
   
 - name: Альтернативная установка docker-compose через pipx
-  block:
-    - name: Установка pipx
-      apt:
-        name: pipx
-        state: present
-        update_cache: yes
-    
-    - name: Установка docker-compose через pipx
-      shell: pipx install docker-compose
+  shell: |
+    if ! command -v pipx &> /dev/null; then
+      apt-get update && apt-get install -y pipx
+    fi
+    pipx ensurepath
+    pipx install docker-compose
+  args:
+    creates: /root/.local/bin/docker-compose
+  register: pipx_install
   when: 
     - ansible_os_family == "Debian" 
-    - pip3_check.rc == 0
     - (docker_compose_apt_check.rc != 0) or ('(none)' in docker_compose_apt_check.stdout)
+  ignore_errors: yes
+  tags: docker
+
+- name: Создание символической ссылки на docker-compose установленный через pipx
+  file:
+    src: /root/.local/bin/docker-compose
+    dest: /usr/bin/docker-compose
+    state: link
+  when: pipx_install is defined and pipx_install.rc == 0
   ignore_errors: yes
   tags: docker
 
@@ -292,11 +299,20 @@
   tags: docker
 
 # Добавление пользователя в группу docker
-- name: Проверка членства пользователя в группе docker
-  shell: "groups {{ ansible_user }} | grep -q 'docker'"
-  register: docker_group_membership
+- name: Проверка существования группы docker
+  getent:
+    database: group
+    key: docker
+  register: docker_group_exists
   changed_when: false
-  failed_when: false
+  ignore_errors: yes
+  tags: docker
+
+- name: Создание группы docker, если она не существует
+  group:
+    name: docker
+    state: present
+  when: docker_group_exists is failed or docker_group_exists.ansible_facts.getent_group.docker is not defined
   tags: docker
 
 - name: Добавление пользователя в группу docker
@@ -305,13 +321,12 @@
     groups: docker
     append: yes
   register: docker_group_add
-  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout and docker_group_membership.rc != 0
   tags: docker
 
 - name: Альтернативное добавление в группу docker через usermod
   shell: usermod -aG docker {{ ansible_user }}
   register: docker_usermod_add
-  when: docker_group_recheck is defined and docker_group_recheck.stdout is defined and "group still not exists" not in docker_group_recheck.stdout and docker_group_membership.rc != 0 and (docker_group_add is defined and docker_group_add.failed | default(true))
+  when: docker_group_add is failed
   failed_when: false  # Игнорируем ошибки, чтобы не прерывать плейбук
   tags: docker
 
@@ -338,41 +353,50 @@
           [Service]
           ExecStartPost=/bin/chmod 666 /var/run/docker.sock
         mode: '0644'
-      notify: systemd daemon-reload
   when: docker_sock_perm is failed
+  notify: systemd daemon-reload
   tags: docker
 
-- name: Создание команды для newgrp docker
+- name: Добавление скрипта для активации группы docker при входе
+  lineinfile:
+    path: "{{ ansible_env.HOME }}/.bashrc"
+    line: '# Добавление в группу docker
+if [ $(id -gn) != "docker" ] && id -nG "$USER" | grep -qw "docker"; then
+  echo "Активация группы docker..."
+  exec sg docker -c "$SHELL"
+fi'
+    state: present
+  when: docker_group_add.changed or docker_usermod_add is changed
+  tags: docker
+
+- name: Создание одноразового скрипта для активации группы docker
   copy:
-    dest: "/home/{{ ansible_user }}/.docker-newgrp.sh"
+    dest: "{{ ansible_env.HOME }}/activate-docker-group.sh"
     content: |
       #!/bin/bash
-      echo "Applying docker group permissions..."
-      if ! groups | grep -q docker; then
-        exec newgrp docker
-      fi
+      echo "Активация группы docker..."
+      newgrp docker
     mode: '0755'
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-  when: docker_group_add.changed is defined and docker_group_add.changed or docker_usermod_add.changed is defined and docker_usermod_add.changed
+  when: docker_group_add.changed or docker_usermod_add is changed
   tags: docker
 
-- name: Добавление вызова docker-newgrp.sh в .bashrc
-  lineinfile:
-    path: "/home/{{ ansible_user }}/.bashrc"
-    line: "# Добавление группы docker: if [ -f ~/.docker-newgrp.sh ]; then . ~/.docker-newgrp.sh; fi"
-    state: present
-  when: docker_group_add.changed is defined and docker_group_add.changed or docker_usermod_add.changed is defined and docker_usermod_add.changed
+- name: Мгновенная настройка прав на сокет docker
+  shell: chmod 666 /var/run/docker.sock
+  changed_when: false
+  ignore_errors: yes
   tags: docker
 
 - name: Вывод инструкции для пользователя
   debug:
     msg: 
       - "Пользователь добавлен в группу docker. Для применения изменений необходимо:"
-      - "1. Выполнить команду: newgrp docker"
+      - "1. Выполнить команду: ./activate-docker-group.sh"
       - "2. Или перезапустить сессию командой: su - {{ ansible_user }}"
       - "3. Или перезагрузить сервер"
-  when: docker_group_add.changed is defined and docker_group_add.changed or docker_usermod_add.changed is defined and docker_usermod_add.changed
+      - "4. Также можно временно использовать sudo с докер-командами: sudo docker ps"
+  when: docker_group_add.changed or docker_usermod_add is changed
   tags: docker
 
 # Перезапуск Docker если были изменения в правах

@@ -331,26 +331,30 @@
       failed_when: false
       changed_when: false
 
-    - name: Обновление и установка pip
-      block:
-        - name: Обновление pip
-          command: python3 -m pip install --upgrade pip
-          when: pip3_check.rc == 0
-          
-        - name: Альтернативный способ установки pip
-          shell: curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3 get-pip.py
-          args:
-            chdir: /tmp
-          when: pip3_check.rc != 0
-      ignore_errors: yes
-
-    # Установка docker-compose с учетом наличия pip
-    - name: Установка docker-compose через pip (при наличии pip)
-      pip:
-        name: docker-compose
+    - name: Установка python3-pip через apt
+      apt:
+        name:
+          - python3-pip
+          - python3-venv
+          - python3-setuptools
         state: present
-      when: pip3_check.rc == 0
       ignore_errors: yes
+      
+    # Проверка альтернативного метода установки с использованием виртуального окружения
+    - name: Создание виртуального окружения для установки pip-пакетов
+      shell: python3 -m venv /opt/venv
+      args:
+        creates: /opt/venv/bin/activate
+      when: false # Отключено по умолчанию, только для примера альтернативного подхода
+
+    # Установка docker-compose через apt (предпочтительный метод)
+    - name: Установка docker-compose через apt
+      apt:
+        name: docker-compose-plugin
+        state: present
+        update_cache: yes
+      register: docker_compose_apt_install
+      failed_when: false
 
     # Альтернативная установка docker-compose напрямую через curl
     - name: Альтернативная установка docker-compose
@@ -366,7 +370,7 @@
             src: /usr/local/bin/docker-compose
             dest: /usr/bin/docker-compose
             state: link
-      when: pip3_check.rc != 0 and docker_compose_check.rc != 0
+      when: (docker_compose_check.rc != 0 or docker_compose_check is not defined) and (docker_compose_apt_install is failed or docker_compose_apt_install.changed == false)
       ignore_errors: yes
 
     # Создание группы docker и добавление пользователя
@@ -481,7 +485,7 @@
       when: enable_fail2ban | bool and fail2ban_service_check is defined
 
     - name: Перезапуск fail2ban (c найденным именем службы)
-      service:
+      systemd:
         name: "{{ fail2ban_service_name }}"
         state: restarted
         enabled: yes
@@ -1046,8 +1050,8 @@
       ignore_errors: yes
 
     - name: restart fail2ban
-      service:
+      systemd:
         name: "{{ fail2ban_service_name | default('fail2ban') }}"
         state: restarted
       ignore_errors: yes
-      when: fail2ban_service_name is defined or fail2ban_installed.rc == 0
+      when: fail2ban_service_name is defined or (fail2ban_installed is defined and fail2ban_installed.rc == 0)

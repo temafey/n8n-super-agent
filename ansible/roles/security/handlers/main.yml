@@ -7,11 +7,11 @@
     state: restarted
 
 - name: restart fail2ban
-  service:
-    name: "fail2ban"
+  systemd:
+    name: fail2ban
     state: restarted
   ignore_errors: yes
-  when: fail2ban_installed.rc == 0
+  when: fail2ban_installed is defined and fail2ban_installed.rc == 0
 
 - name: reload ufw
   command: ufw reload
